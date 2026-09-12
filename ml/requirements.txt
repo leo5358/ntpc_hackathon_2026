@@ -1,0 +1,10 @@
+boto3            # only for: python -m pipeline.s5_train --sagemaker
+numpy
+pandas
+pillow
+pypdfium2
+rapidocr_onnxruntime
+scikit-learn
+torch            # CPU wheel: pip install torch --index-url https://download.pytorch.org/whl/cpu
+transformers
+xgboost-cpu

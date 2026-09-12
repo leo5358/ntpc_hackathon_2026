@@ -1,0 +1,4 @@
+# Built locally by pipeline/ from third-party sources; not ours to redistribute (see ../NOTICE.md)
+data/processed/
+data/labels/
+models/
