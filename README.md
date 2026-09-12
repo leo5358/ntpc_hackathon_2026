@@ -369,6 +369,35 @@ curl -X POST "http://localhost:8000/api/report/city/narrative" \
 
 ## 部署與 CI/CD
 
+### 串接 S3 private dataset
+
+ML 管線可直接使用私有 S3 上的原始資料 ZIP。複製 `.env.example` 為 `.env`，填入完整的
+S3 URI；不要把 AWS 金鑰提交到 Git：
+
+```dotenv
+S3_DATASET_URI=s3://my-private-bucket/dataset.zip
+AWS_PROFILE=workshop
+AWS_DEFAULT_REGION=us-west-2
+```
+
+管線會使用 boto3 標準憑證鏈（`AWS_PROFILE`、AWS SSO、環境變數或 instance role），第一次
+執行時下載到 `CACHE_DIR/dataset.zip`，後續直接使用快取。先從 repo 根目錄快速驗證權限與
+物件 metadata（不下載完整 ZIP）：
+
+```bash
+make check-s3-dataset
+```
+
+資料集較大時，建議在 demo 前預先完成下載與 ZIP 完整性檢查：
+
+```bash
+make download-s3-dataset
+```
+
+完成後照 `ml/data/README.md` 的順序執行管線即可。S3 物件更新時，可暫時設定
+`S3_DATASET_REFRESH=1` 強制重新下載。AWS 身分只需要該物件的 `s3:GetObject`；若使用
+SSE-KMS，還需要對應 KMS key 的 `kms:Decrypt`。
+
 ### 架構
 
 | 層 | 服務 | 資源名稱（stage=dev） | 存取控制 |
