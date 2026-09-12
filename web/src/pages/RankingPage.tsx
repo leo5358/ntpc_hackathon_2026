@@ -1,5 +1,5 @@
-import React from "react";
-import { Download, Filter, Search, AlertTriangle } from "lucide-react";
+import { Download, Filter, Search, AlertTriangle, MapPin } from "lucide-react";
+import { Link } from "react-router-dom";
 
 export const RankingPage: React.FC = () => {
   return (
@@ -12,13 +12,22 @@ export const RankingPage: React.FC = () => {
             基於財務決算預算偏差、歷史裁罰紀錄、輿情聲量與異常規則的綜合風險評估
           </p>
         </div>
-        <button
-          disabled
-          className="inline-flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition cursor-not-allowed opacity-75"
-        >
-          <Download className="w-4 h-4" />
-          <span>匯出稽查清單 (CSV)</span>
-        </button>
+        <div className="flex items-center space-x-3">
+          <Link
+            to="/map"
+            className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm"
+          >
+            <MapPin className="w-4 h-4" />
+            <span>切換至地理風險地圖</span>
+          </Link>
+          <button
+            disabled
+            className="inline-flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition cursor-not-allowed opacity-75"
+          >
+            <Download className="w-4 h-4" />
+            <span>匯出稽查清單 (CSV)</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar (UI Skeleton) */}

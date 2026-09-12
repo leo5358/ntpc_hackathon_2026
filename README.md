@@ -158,3 +158,84 @@ make check-backend
 # 前端靜態資源編譯測試
 make build-frontend
 ```
+
+---
+
+## 🔍 輿情爬蟲與 Bedrock 模型分析使用方式 (Opinion Crawler & Bedrock Inference)
+
+輿情分析模組整合多源網路爬蟲（**Google News RSS、PTT 媽寶板、Dcard 親子板、Threads 兩階段深度留言串爬蟲**）、實體消歧義對齊，並透過 **Amazon Bedrock (Claude 3.5 / 4.5 Haiku)** 進行 6 大法規風險議題分類與情緒極性計算，最終透過時間指數衰減算出機構輿情風險指數（`opinion_risk`，0–100 分）。
+
+### 1. 透過 CLI 獨立執行即時爬取與分析
+
+使用 Python 模組直接對指定幼兒園發動多源爬蟲與評分：
+
+```bash
+# 啟用虛擬環境
+source .venv/bin/activate
+
+# 執行北大非營利幼兒園端對端爬取與分析
+python3 -m pipeline.nlp.service --name "新北市北大非營利幼兒園" --id "N07" --district "三峽區"
+
+# 或直接使用 Makefile 捷徑
+make test-opinion-crawler
+```
+
+**CLI 輸出範例**：
+```json
+{
+  "inst_id": "N07",
+  "inst_name": "新北市北大非營利幼兒園",
+  "opinion_risk": 0.0,
+  "coverage": 4,
+  "has_opinion": true,
+  "topic_distribution": {
+    "無特定風險/一般討論": 4
+  },
+  "documents": [
+    {
+      "id": "gnews_...",
+      "source": "google_news",
+      "title": "北大非營利幼兒園揭牌...",
+      "published_date": "2017-11-17",
+      "topic": "無特定風險/一般討論",
+      "polarity": 0.1,
+      "snippet": "社群一般提及"
+    }
+  ]
+}
+```
+
+### 2. 透過 REST API 觸發即時爬取與計算
+
+啟動後端伺服器後（`make run-backend`），可透過 HTTP 呼叫觸發：
+
+#### A. 查詢已建檔機構並強制即時爬取 (`GET`)
+```bash
+curl -X GET "http://localhost:8000/api/opinion/N07?crawl=true"
+```
+
+#### B. 自訂任意機構名稱即時爬取分析 (`POST`)
+```bash
+curl -X POST "http://localhost:8000/api/opinion/analyze" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "新北市安興非營利幼兒園",
+       "district": "新店區"
+     }'
+```
+
+### 3. AWS Bedrock 模型配置與環境變數
+
+- **設定檔位置**：[`config.yaml`](config.yaml)
+  ```yaml
+  aws:
+    region: us-west-2
+    profile_name: workshop   # AWS 具名 Profile
+  ```
+- **使用模型**：預設為 `anthropic.claude-3-haiku-20240307-v1:0`。
+- **高可用備援機制 (Fallback)**：
+  - 若執行環境未配置 AWS 憑證或尚未開通 Bedrock 模型權限，系統會自動在終端印出警告，並**無縫切換為本地規則與關鍵詞詞典分類模式（Rule-based Fallback）**，保證本機離線與測試流程不中斷。
+
+---
+
+## ⚠️ 免責與使用限制聲明
