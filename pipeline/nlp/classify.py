@@ -32,6 +32,11 @@ TOPIC_KEYWORDS = {
     "行政與立案": ["超收學生", "未立案", "隱匿班級", "分校違法", "幼托一體違規"],
 }
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 DEFAULT_BEDROCK_MODEL = "anthropic.claude-3-haiku-20240307-v1:0"
 
 
@@ -53,8 +58,8 @@ class BedrockOpinionClassifier:
 
     def __init__(
         self,
-        region: str = "us-west-2",
-        profile_name: Optional[str] = "workshop",
+        region: Optional[str] = None,
+        profile_name: Optional[str] = None,
         model_id: str = DEFAULT_BEDROCK_MODEL,
     ):
         self.region = region
@@ -64,17 +69,28 @@ class BedrockOpinionClassifier:
 
     def _init_bedrock_client(self):
         self.client = None
-        try:
-            cfg = load_config()
-            aws_cfg = cfg.get("aws", {})
-            region = self.region or aws_cfg.get("region", "us-west-2")
-            profile = self.profile_name or aws_cfg.get("profile_name", "workshop")
+        cfg = load_config()
+        aws_cfg = cfg.get("aws", {})
+        target_region = self.region or os.getenv("AWS_DEFAULT_REGION") or os.getenv("AWS_REGION") or aws_cfg.get("region", "us-west-2")
+        target_profile = self.profile_name or os.getenv("AWS_PROFILE") or aws_cfg.get("profile_name", "workshop")
 
-            session = boto3.Session(profile_name=profile, region_name=region)
-            self.client = session.client("bedrock-runtime", region_name=region)
-            logger.info("AWS Bedrock client initialized successfully (Region: %s, Profile: %s)", region, profile)
-        except Exception as e:
-            logger.warning("Failed to initialize AWS Bedrock client (%s). Will use rule-based fallback.", e)
+        # Attempt 1: Named profile (e.g. workshop)
+        try:
+            session = boto3.Session(profile_name=target_profile, region_name=target_region)
+            self.client = session.client("bedrock-runtime", region_name=target_region)
+            logger.info("AWS Bedrock client initialized via profile '%s' in region '%s'", target_profile, target_region)
+            return
+        except Exception as e1:
+            logger.debug("Profile '%s' not found or invalid: %s", target_profile, e1)
+
+        # Attempt 2: Environment variables or default credentials chain
+        try:
+            session = boto3.Session(region_name=target_region)
+            self.client = session.client("bedrock-runtime", region_name=target_region)
+            logger.info("AWS Bedrock client initialized via default credential chain in region '%s'", target_region)
+            return
+        except Exception as e2:
+            logger.warning("Failed to initialize AWS Bedrock client (%s). Will use rule-based fallback.", e2)
             self.client = None
 
     def _build_prompt(self, title: str, snippet: str, inst_name: str) -> str:
