@@ -1,4 +1,29 @@
+# Environment & OS
 .env
+*.env
 .DS_Store
-.node_modules
-hackathon-plan-2.md
+Thumbs.db
+
+# Node / Web
+node_modules/
+web/node_modules/
+dist/
+web/dist/
+.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Data & Models (local scratch)
+data/raw/
+data/curated/
+data/scores/
+*.parquet
+*.csv

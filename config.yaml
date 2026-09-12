@@ -1,0 +1,32 @@
+aws:
+  region: us-west-2
+  profile_name: workshop
+  bucket_name: kiro-workshop-default
+  execution_role_arn: arn:aws:iam::123456789012:role/kiro-sagemaker-execution-role
+  s3_prefixes:
+    raw: raw/
+    curated: curated/
+    features: features/
+    models: models/
+    scores: scores/
+    opinion: opinion/
+    web: web/
+
+model:
+  weights:
+    penalty: 0.45
+    residual: 0.20
+    isolation_forest: 0.15
+    opinion: 0.10
+    flags: 0.10
+  peer_groups:
+    - 市立幼兒園
+    - 非營利園
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins:
+    - "http://localhost:5173"
+    - "http://localhost:3000"
+    - "*"
