@@ -174,3 +174,207 @@ class WhatIfResponse(BaseModel):
     academic_year: int
     weights_applied: WhatIfWeights
     items: List[RescoredItem] = []
+
+
+# ---------------------------------------------------------
+# Risk Assessment Report Models
+# 對應「教育部風險管理推動作業原則」附件2、附件3、附件4、附件7
+# ---------------------------------------------------------
+class LikelihoodScaleItem(BaseModel):
+    """附件2：風險可能性評量標準表之一列。"""
+
+    level: int = Field(..., ge=1, le=3, description="等級(L)")
+    label: str = Field(..., description="可能性，如 幾乎確定 / 可能 / 幾乎不可能")
+    description: str = Field(..., description="詳細的描述")
+
+
+class ImpactScaleItem(BaseModel):
+    """附件2：風險影響程度評量標準表之一列。"""
+
+    level: int = Field(..., ge=1, le=3, description="等級(I)")
+    label: str = Field(..., description="影響程度，如 非常嚴重 / 嚴重 / 輕微")
+    image: str = Field(..., description="形象")
+    personnel: str = Field(..., description="人員")
+    protest: str = Field(..., description="民眾（或部會）抗議")
+    property_loss: str = Field(..., description="財物損失")
+    government_operation: str = Field(..., description="影響政府運作")
+
+
+class RiskGrade(BaseModel):
+    """附件7 之「風險等級 + 風險值」欄組，判斷基準依附件3。"""
+
+    likelihood: int = Field(..., ge=1, le=3, description="可能性(L)")
+    likelihood_label: str = Field(..., description="可能性文字級距")
+    impact: int = Field(..., ge=1, le=3, description="影響程度(I)")
+    impact_label: str = Field(..., description="影響程度文字級距")
+    risk_value: int = Field(..., description="風險值(R)=(L)×(I)")
+    risk_level: str = Field(..., description="低度風險 / 中度風險 / 高度風險 / 極度風險")
+    color: str = Field(..., description="附件4 風險圖像色階")
+    tolerable: bool = Field(..., description="是否為可容忍風險（R<=4）")
+    response: str = Field(..., description="附件3 對應之處理策略敘述")
+
+
+class ReportEvidence(BaseModel):
+    """報表列的模型佐證，確保每一格風險等級都可回溯到原始資料。"""
+
+    kind: str = Field(..., description="shap / penalty / flag / opinion / account")
+    label: str = Field(..., description="佐證標題")
+    detail: str = Field(..., description="白話說明")
+    value: Optional[Any] = Field(None, description="數值或原始值")
+    source_ref: Optional[str] = Field(None, description="決算書頁碼、裁罰文號或來源 URL")
+
+
+class RiskAssessmentRow(BaseModel):
+    """附件7「風險評估及處理彙總表」之一列（11 個資料欄）。"""
+
+    seq: int = Field(..., description="項次")
+    policy_goal: str = Field(..., description="年度施政目標")
+    key_project: str = Field(..., description="重要計畫項目")
+    risk_item: str = Field(..., description="風險項目")
+    risk_scenario: str = Field(..., description="風險情境（發生原因及影響範圍）")
+    existing_control: str = Field(..., description="現有風險對策")
+    existing: RiskGrade = Field(..., description="現有風險等級(L)(I)與現有風險值(R)")
+    additional_control: str = Field(default="", description="新增風險對策")
+    residual: RiskGrade = Field(..., description="殘餘風險等級(L)(I)與殘餘風險值(R)")
+    owner_unit: str = Field(..., description="主辦單位")
+    evidence: List[ReportEvidence] = Field(default_factory=list, description="模型佐證明細")
+
+
+class RiskMatrixCell(BaseModel):
+    """附件4 現有(殘餘)風險圖像之單一格位。"""
+
+    likelihood: int
+    impact: int
+    risk_value: int
+    risk_level: str
+    color: str
+    tolerable: bool
+    response: str
+    row_seqs: List[int] = Field(default_factory=list, description="落於本格之風險項目項次")
+
+
+class RiskReportMeta(BaseModel):
+    """報表表頭與可稽核性資訊。"""
+
+    agency: str = Field(default="新北市政府教育局", description="機關名稱")
+    title: str = Field(..., description="報表全銜，如 新北市政府教育局114年風險評估及處理彙總表")
+    roc_year: int = Field(..., description="中華民國年度（表頭 ○○○年）")
+    academic_year: int = Field(..., description="學年度，如 112")
+    inst_id: str
+    inst_name: str
+    peer_group: str
+    operator: Optional[str] = None
+    district: Optional[str] = None
+    composite_score: Optional[float] = Field(None, description="綜合風險評分 0..100")
+    generated_at: str = Field(..., description="產製時間 ISO8601")
+    model_version: str = Field(default="0.1.0", description="評分模型版本")
+    data_freshness: Optional[str] = Field(None, description="資料更新時間")
+    weights: Dict[str, float] = Field(default_factory=dict, description="綜合評分權重配置")
+    is_sample: bool = Field(default=False, description="是否為示範資料（未接真實模型輸出）")
+
+
+class RiskReportSummary(BaseModel):
+    total_items: int = 0
+    intolerable_count: int = Field(default=0, description="不可容忍風險（R>=6）項目數")
+    level_distribution: Dict[str, int] = Field(default_factory=dict, description="各風險等級項目數")
+    max_risk_value: int = 0
+    residual_intolerable_count: int = Field(default=0, description="採行新增對策後仍不可容忍之項目數")
+
+
+class RiskAssessmentReport(BaseModel):
+    """完整文件報告：可直接於前端排版列印或匯出。"""
+
+    meta: RiskReportMeta
+    rows: List[RiskAssessmentRow] = []
+    existing_matrix: List[RiskMatrixCell] = Field(default_factory=list, description="附件4 現有風險圖像")
+    residual_matrix: List[RiskMatrixCell] = Field(default_factory=list, description="附件4 殘餘風險圖像")
+    likelihood_scale: List[LikelihoodScaleItem] = []
+    impact_scale: List[ImpactScaleItem] = []
+    tolerance_threshold: int = Field(default=4, description="風險容忍度：風險值 4 以下予以容忍")
+    summary: RiskReportSummary = Field(default_factory=RiskReportSummary)
+    disclaimer: str = Field(default="", description="審計免責聲明")
+    source_urls: List[str] = []
+
+
+class RiskScalesResponse(BaseModel):
+    """附件2 與附件3 之評量標準，供前端繪製圖例與矩陣。"""
+
+    likelihood_scale: List[LikelihoodScaleItem] = []
+    impact_scale: List[ImpactScaleItem] = []
+    tolerance_threshold: int = 4
+    matrix: List[RiskMatrixCell] = []
+
+
+class ModelSignalInput(BaseModel):
+    """管線／模型輸出餵入報表產生器的單一風險訊號。"""
+
+    code: str = Field(default="", description="風險項目代碼，如 UNDERSTAFFING、OPINION_餐食與衛生")
+    primary_flag: Optional[str] = Field(
+        None, description="地圖／排行頁的旗標文字；未給 code 時由後端對映為風險項目代碼"
+    )
+    composite_score: Optional[float] = Field(
+        None, ge=0.0, le=100.0, description="0–100 綜合風險分數；給定時優先用於換算可能性(L)"
+    )
+    p_penalty: Optional[float] = Field(None, ge=0.0, le=1.0, description="XGBoost 裁罰預測機率")
+    severity: Optional[float] = Field(None, ge=0.0, le=1.0, description="嚴重度 0..1（輿情或旗標）")
+    penalty_count: int = Field(default=0, description="相關歷史裁罰件數")
+    detail: Optional[str] = Field(None, description="補充敘述，併入風險情境")
+    evidence: List[ReportEvidence] = Field(default_factory=list)
+
+
+class PeerGroupStat(BaseModel):
+    peer_group: str
+    count: int
+    average_score: float
+    max_score: float
+    penalty_count: int
+
+
+class DistrictStat(BaseModel):
+    district: str
+    count: int
+    average_score: float
+    max_score: float
+
+
+class CityNarrativeRequest(BaseModel):
+    """POST /api/report/city/narrative：統計由前端算好，後端只負責敘述文字。"""
+
+    roc_year: int = Field(default=113, description="報表年度")
+    academic_year: int = Field(default=112, description="學年度")
+    total_institutions: int = 0
+    average_score: float = 0.0
+    high_risk_count: int = Field(default=0, description="風險分數 >= 60 之機構數")
+    medium_risk_count: int = 0
+    low_risk_count: int = 0
+    total_penalties: int = Field(default=0, description="歷史裁罰件數合計")
+    peer_groups: List[PeerGroupStat] = []
+    top_districts: List[DistrictStat] = []
+    top_flags: List[str] = Field(default_factory=list, description="出現最多的風險旗標")
+    high_risk_institutions: List[str] = Field(default_factory=list, description="高風險機構名稱")
+    opinion_coverage: Optional[float] = Field(None, description="輿情資料涵蓋率 0..1")
+    parser_verified_rate: Optional[float] = Field(None, description="PDF 解析驗證率 0..1")
+    use_bedrock: bool = Field(default=True, description="關閉時直接使用規則模板")
+
+
+class CityNarrativeResponse(BaseModel):
+    executive_summary: str = ""
+    key_findings: List[str] = []
+    recommendations: List[str] = []
+    generated_by: str = Field(default="template", description="bedrock 或 template")
+    model_id: Optional[str] = None
+
+
+class RiskReportBuildRequest(BaseModel):
+    """POST /api/report/build：由管線直接以模型輸出產生報表。"""
+
+    inst_id: str
+    inst_name: str
+    peer_group: str = "非營利園"
+    operator: Optional[str] = None
+    district: Optional[str] = None
+    academic_year: int = 112
+    roc_year: Optional[int] = Field(None, description="未給則以學年度+1 推算")
+    composite_score: Optional[float] = None
+    signals: List[ModelSignalInput] = []
+    source_urls: List[str] = []

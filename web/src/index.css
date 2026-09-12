@@ -28,3 +28,40 @@ body {
   margin: 12px 14px !important;
   line-height: 1.4 !important;
 }
+
+/* 風險評估及處理彙總表：列印 / 另存 PDF 版面（A4 橫式，比照公文格式） */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  header.sticky,
+  nav {
+    display: none !important;
+  }
+
+  table {
+    page-break-inside: auto;
+    font-size: 9pt;
+  }
+
+  tr,
+  section {
+    page-break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  /* 印出時仍保留附件4 風險色階 */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

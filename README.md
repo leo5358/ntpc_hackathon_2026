@@ -232,9 +232,110 @@ curl -X POST "http://localhost:8000/api/opinion/analyze" \
     region: us-west-2
     profile_name: workshop   # AWS 具名 Profile
   ```
-- **使用模型**：預設為 `anthropic.claude-3-haiku-20240307-v1:0`。
+- **使用模型**：預設為 `us.anthropic.claude-haiku-4-5-20251001-v1:0`（inference profile），可由環境變數 `BEDROCK_MODEL_ID` 覆寫。
 - **高可用備援機制 (Fallback)**：
   - 若執行環境未配置 AWS 憑證或尚未開通 Bedrock 模型權限，系統會自動在終端印出警告，並**無縫切換為本地規則與關鍵詞詞典分類模式（Rule-based Fallback）**，保證本機離線與測試流程不中斷。
+
+---
+
+## 風險評估及處理彙總表 (官方格式文件報告)
+
+模型輸出可直接產製為符合**教育部風險管理推動作業原則**之正式文件報告，供稽查人員列印、簽陳或匯出。格式對應原則之附件二（風險可能性／影響程度評量標準表）、附件三（風險判斷基準及其風險容忍度）、附件四（現有(殘餘)風險圖像）與附件七（風險評估及處理彙總表）。
+
+### 1. 級距與判斷基準
+
+- 風險值 **R = 可能性(L) × 影響程度(I)**，L 與 I 皆為 1～3 級。
+- 風險容忍度：**R ≤ 4 予以容忍**；R = 6（高度風險）與 R = 9（極度風險）為不可容忍風險，須研擬新增風險對策。
+- 官方級距與處理策略集中定義於 [`api/risk_matrix.py`](api/risk_matrix.py)，模型分數換算為 L / I 的門檻集中於 [`api/services/report_builder.py`](api/services/report_builder.py)：
+
+  | 模型訊號 | 換算後可能性(L) |
+  | --- | --- |
+  | 裁罰機率或嚴重度 ≥ 0.50，或近年裁罰 ≥ 2 件 | 3（幾乎確定） |
+  | 裁罰機率或嚴重度 ≥ 0.20，或近年裁罰 ≥ 1 件 | 2（可能） |
+  | 其餘 | 1（幾乎不可能） |
+
+  影響程度(I) 取自風險項目目錄之基準值（如體罰、餐食衛生、設施安全為 3），並於嚴重度 ≥ 0.75 或裁罰 ≥ 2 件時上調一級；殘餘風險採保守假設，僅由新增對策降低可能性一級。
+
+### 2. 後端 API
+
+```bash
+# 附件二、附件三級距與空白風險圖像
+curl "http://localhost:8000/api/report/scales"
+
+# 單一機構彙總表（demo=true 回傳示範資料，meta.is_sample 為 true）
+curl "http://localhost:8000/api/report/N07?academic_year=112&demo=true"
+
+# 由管線／模型輸出直接產製報表
+curl -X POST "http://localhost:8000/api/report/build" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "inst_id": "N15",
+       "inst_name": "新北市新月非營利幼兒園",
+       "academic_year": 112,
+       "signals": [
+         {"code": "UNDERSTAFFING", "p_penalty": 0.62, "severity": 0.71, "penalty_count": 1},
+         {"code": "OPINION_設施安全", "severity": 0.82}
+       ]
+     }'
+```
+
+### 3. 前端頁面
+
+- 路徑：`/report/:id`，可自機構詳情頁點擊「產製風險彙總表」進入。
+- 頁面欄位完整對應附件七：項次、年度施政目標、重要計畫項目、風險項目、風險情境、現有風險對策、現有風險等級（可能性(L)／影響程度(I)）、現有風險值(R)=(L)×(I)、新增風險對策、殘餘風險等級（可能性(L)／影響程度(I)）、殘餘風險值(R)=(L)×(I)、主辦單位。
+- 每一列可展開**模型佐證**（SHAP 貢獻度、裁罰文號、決算書頁碼、輿情來源 URL），確保風險等級可回溯。
+- 支援 **列印／另存 PDF（A4 橫式，保留附件四色階）**、**匯出 CSV（含 BOM，Excel 可直開）** 與 **匯出 JSON**。
+
+---
+
+## 全市風險評估綜整報告
+
+路徑 `/report`（等同 `/report/city`），亦可自風險排行頁點擊「產製綜整報告」進入。將全站數據收斂為一份可簽陳、可列印的年度報告，第柒章自動展開所有高風險機構的專案報告。
+
+### 報告結構
+
+| 章節 | 內容 |
+| --- | --- |
+| 壹、執行摘要 | Bedrock 生成之摘要與 3 條關鍵發現，另列 5 項關鍵指標；文字來源以標籤標示 |
+| 貳、評估範圍與資料可信度 | 資料來源、PDF 解析驗證率、輿情涵蓋率、資料更新時間 |
+| 參、風險分布總覽 | 風險等級分布、同儕群組對比、行政區熱點前 5、分數分布直方圖 |
+| 肆、全市風險圖像 | 附件四 3×3 矩陣，標示各園落點 |
+| 伍、風險因子拆解 | 旗標依人力／財務／治理／設施分類統計，裁罰與分數之一致性 |
+| 陸、稽查資源配置建議 | Bedrock 建議＋依附件三判斷基準與地理群聚之排程建議 |
+| 柒、高風險機構專案報告 | 分數 ≥60 之機構逐所展開：定位、旗標、附件七列、建議查核重點 |
+| 捌、模型方法論與使用限制 | 評分公式、AUC／Macro-F1／Parser 驗證率、免責聲明 |
+| 玖、附錄 | 全機構風險評分明細表 |
+
+### 等級換算規則
+
+報告以 0–100 分為主體，換算至教育部風險值時採下列對照（與 `api/services/report_builder.py` 一致）：
+
+| 換算項目 | 規則 |
+| --- | --- |
+| 可能性(L) | 風險分數 ≥60 → 3、30–59 → 2、<30 → 1 |
+| 影響程度(I) | 歷史裁罰 ≥2 件 → 3、1 件 → 2、無 → 1 |
+| 風險值(R) | L × I，R ≤ 4 為可容忍風險 |
+
+### 敘述文字生成
+
+```bash
+# Bedrock 生成（憑證失效或模型未開通時，後端自動退回規則模板）
+curl -X POST "http://localhost:8000/api/report/city/narrative" \
+     -H "Content-Type: application/json" \
+     -d '{"total_institutions":14,"average_score":45.8,"high_risk_count":5,"total_penalties":12,
+          "peer_groups":[{"peer_group":"非營利園","count":10,"average_score":55.0,"max_score":78.5,"penalty_count":12}],
+          "top_districts":[{"district":"三峽區","count":1,"average_score":78.5,"max_score":78.5}],
+          "opinion_coverage":0.35}'
+
+# 強制使用規則模板（離線 Demo）
+# 於上述 JSON 加入 "use_bedrock": false
+```
+
+回應中的 `generated_by` 為 `bedrock` 或 `template`，前端據此於報告上標示文字來源；提示詞明確限制模型只得引用傳入數字、不得推論違法事實。
+
+### 資料源
+
+14 園評分資料集中於 `web/src/data/institutions.ts`（風險地圖與綜整報告共用），統計計算集中於 `web/src/services/cityReport.ts`。待 Stage 5 分數落地後，改由 `/api/institutions` 取得即可，頁面無需改寫。
 
 ---
 

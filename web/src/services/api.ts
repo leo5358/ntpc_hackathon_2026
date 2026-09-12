@@ -7,6 +7,11 @@ import {
   OpinionResponse,
   WhatIfRequest,
   WhatIfResponse,
+  RiskAssessmentReport,
+  RiskReportBuildRequest,
+  RiskScalesResponse,
+  CityNarrativeRequest,
+  CityNarrativeResponse,
 } from "../types/api";
 
 const BASE_URL = "/api";
@@ -49,6 +54,43 @@ export const api = {
 
   postWhatIf: (data: WhatIfRequest): Promise<WhatIfResponse> => {
     return fetchJson<WhatIfResponse>("/whatif", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** 附件2 評量標準與附件3 風險容忍度（前端圖例與矩陣底圖） */
+  getRiskScales: (): Promise<RiskScalesResponse> => fetchJson<RiskScalesResponse>("/report/scales"),
+
+  /** 附件7 風險評估及處理彙總表 */
+  getRiskReport: (
+    id: string,
+    options?: { academicYear?: number; rocYear?: number; crawl?: boolean; demo?: boolean }
+  ): Promise<RiskAssessmentReport> => {
+    const params = new URLSearchParams();
+    if (options?.academicYear !== undefined) params.set("academic_year", options.academicYear.toString());
+    if (options?.rocYear !== undefined) params.set("roc_year", options.rocYear.toString());
+    if (options?.crawl) params.set("crawl", "true");
+    if (options?.demo) params.set("demo", "true");
+    const query = params.toString();
+    return fetchJson<RiskAssessmentReport>(
+      `/report/${encodeURIComponent(id)}${query ? `?${query}` : ""}`
+    );
+  },
+
+  /** 全市綜整報告的執行摘要與建議（Bedrock 生成，失敗由後端退回規則模板） */
+  postCityNarrative: (data: CityNarrativeRequest): Promise<CityNarrativeResponse> => {
+    return fetchJson<CityNarrativeResponse>("/report/city/narrative", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** 由模型輸出直接產製報表（批次或離線驗證） */
+  postRiskReport: (data: RiskReportBuildRequest): Promise<RiskAssessmentReport> => {
+    return fetchJson<RiskAssessmentReport>("/report/build", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
