@@ -23,6 +23,7 @@ env/
 venv/
 *.egg-info/
 .pytest_cache/
+.cache/
 
 # Data & Models (local scratch)
 data/raw/

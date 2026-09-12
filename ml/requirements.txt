@@ -1,4 +1,5 @@
 boto3            # only for: python -m pipeline.s5_train --sagemaker
+python-dotenv     # load private S3 dataset location from repo-root .env
 numpy
 pandas
 pillow

@@ -7,6 +7,8 @@ help:
 	@echo "  make install-frontend    - Install NPM dependencies in web/"
 	@echo "  make check-backend       - Run infra bootstrap check"
 	@echo "  make check-bedrock       - Test AWS Bedrock connection & Claude model"
+	@echo "  make check-s3-dataset    - Test private S3 dataset access"
+	@echo "  make download-s3-dataset - Download and validate the complete dataset ZIP"
 	@echo "  make run-backend         - Start FastAPI development server"
 	@echo "  make run-frontend        - Start Vite development server"
 	@echo "  make build-frontend      - Build static frontend assets"
@@ -28,6 +30,12 @@ check-backend:
 
 check-bedrock:
 	$(PYTHON) -m infra.check_bedrock
+
+check-s3-dataset:
+	$(PYTHON) -m infra.check_s3_dataset
+
+download-s3-dataset:
+	$(PYTHON) -m infra.check_s3_dataset --download
 
 run-backend:
 	$(UVICORN) api.main:app --host 0.0.0.0 --port 8000 --reload
