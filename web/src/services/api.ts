@@ -12,6 +12,8 @@ import {
   RiskScalesResponse,
   CityNarrativeRequest,
   CityNarrativeResponse,
+  SchoolGradesRequest,
+  SchoolGradesResponse,
 } from "../types/api";
 
 // 本機開發走 vite proxy 的相對路徑；部署到 S3/CloudFront 時由建置期的
@@ -84,6 +86,15 @@ export const api = {
   /** 全市綜整報告的執行摘要與建議（Bedrock 生成，失敗由後端退回規則模板） */
   postCityNarrative: (data: CityNarrativeRequest): Promise<CityNarrativeResponse> => {
     return fetchJson<CityNarrativeResponse>("/report/city/narrative", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** 機構層級風險等級換算，與 /report/build 共用同一套規則 */
+  postSchoolGrades: (data: SchoolGradesRequest): Promise<SchoolGradesResponse> => {
+    return fetchJson<SchoolGradesResponse>("/report/grades", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),

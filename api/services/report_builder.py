@@ -324,6 +324,29 @@ def build_row(seq: int, signal: ModelSignalInput) -> RiskAssessmentRow:
     )
 
 
+def grade_for_school(
+    primary_flag: Optional[str],
+    composite_score: float,
+    penalty_count: int = 0,
+) -> Dict[str, Any]:
+    """機構層級的風險等級，供全市風險圖像(附件4)標示落點。
+
+    直接沿用 build_row：機構的落點就是其風險項目那一列的現有風險等級，
+    確保全市圖像與該機構專案報告(附件7)不會對同一間園給出不同的風險值。
+    """
+    row = build_row(
+        1,
+        ModelSignalInput(
+            primary_flag=primary_flag,
+            composite_score=composite_score,
+            penalty_count=penalty_count,
+        ),
+    )
+    # 旗標對映不到目錄時（如「正常」「財務運作正常」），不要沿用泛用項目的名稱充數
+    risk_item = row.risk_item if code_from_primary_flag(primary_flag) else "未對映至特定風險項目"
+    return {"grade": row.existing, "risk_item": risk_item}
+
+
 def _matrix_from_rows(rows: List[RiskAssessmentRow], residual: bool = False) -> List[RiskMatrixCell]:
     """將各風險項目落點填入附件4 風險圖像。"""
     placements: Dict[str, List[int]] = {}

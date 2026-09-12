@@ -14,6 +14,9 @@ from api.schemas import (
     RiskMatrixCell,
     RiskReportBuildRequest,
     RiskScalesResponse,
+    SchoolGradeItem,
+    SchoolGradesRequest,
+    SchoolGradesResponse,
 )
 from api.services import narrative, report_builder, institution_store
 from api.routes.opinion import SAMPLE_ROSTER, pipeline
@@ -43,6 +46,28 @@ async def generate_city_narrative(req: CityNarrativeRequest):
     stats = req.model_dump(exclude={"use_bedrock"})
     result = narrative.generate_city_narrative(stats, use_bedrock=req.use_bedrock)
     return CityNarrativeResponse(**result)
+
+
+@router.post("/grades", response_model=SchoolGradesResponse)
+async def grade_schools(req: SchoolGradesRequest):
+    """換算多所機構的風險等級，供全市綜整報告的附件4 風險圖像標示落點。
+
+    與 /api/report/build 共用同一段換算，避免全市圖像與機構專案報告
+    對同一間園給出不同的風險值。
+    """
+    return SchoolGradesResponse(
+        grades=[
+            SchoolGradeItem(
+                inst_id=school.inst_id,
+                **report_builder.grade_for_school(
+                    primary_flag=school.primary_flag,
+                    composite_score=school.composite_score,
+                    penalty_count=school.penalty_count,
+                ),
+            )
+            for school in req.schools
+        ]
+    )
 
 
 @router.post("/build", response_model=RiskAssessmentReport)

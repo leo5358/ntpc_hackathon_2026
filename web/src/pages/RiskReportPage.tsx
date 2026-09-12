@@ -149,7 +149,8 @@ export const RiskReportPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [academicYear, setAcademicYear] = useState(112);
-  const [demo, setDemo] = useState(true);
+  // 預設走真實訊號；示範資料須由使用者主動勾選，避免每間園都印出同一份樣板
+  const [demo, setDemo] = useState(false);
   const [crawl, setCrawl] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 

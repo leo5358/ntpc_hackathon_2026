@@ -372,6 +372,31 @@ class CityNarrativeResponse(BaseModel):
     model_id: Optional[str] = None
 
 
+class SchoolGradeInput(BaseModel):
+    """全市風險圖像所需的單一機構輸入。"""
+
+    inst_id: str
+    primary_flag: Optional[str] = None
+    composite_score: float = Field(..., ge=0.0, le=100.0, description="0–100 綜合風險分數")
+    penalty_count: int = 0
+
+
+class SchoolGradesRequest(BaseModel):
+    """POST /api/report/grades：一次換算多所機構的風險等級。"""
+
+    schools: List[SchoolGradeInput] = []
+
+
+class SchoolGradeItem(BaseModel):
+    inst_id: str
+    risk_item: str = Field(..., description="對映到的風險項目名稱")
+    grade: RiskGrade = Field(..., description="現有風險等級(L)(I)與風險值(R)")
+
+
+class SchoolGradesResponse(BaseModel):
+    grades: List[SchoolGradeItem] = []
+
+
 class RiskReportBuildRequest(BaseModel):
     """POST /api/report/build：由管線直接以模型輸出產生報表。"""
 

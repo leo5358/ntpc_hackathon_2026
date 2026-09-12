@@ -269,6 +269,8 @@ curl -X POST "http://localhost:8000/api/opinion/analyze" \
   | 裁罰機率或嚴重度 ≥ 0.20，或近年裁罰 ≥ 1 件 | 2（可能） |
   | 其餘 | 1（幾乎不可能） |
 
+  上表為未提供綜合分數時的門檻；若訊號帶有 0–100 的 `composite_score`（全市綜整報告即走此路徑），可能性(L) 改以分數換算（≥60 → 3、30–59 → 2、<30 → 1）。兩者共用同一個 `build_row()`。
+
   影響程度(I) 取自風險項目目錄之基準值（如體罰、餐食衛生、設施安全為 3），並於嚴重度 ≥ 0.75 或裁罰 ≥ 2 件時上調一級；殘餘風險採保守假設，僅由新增對策降低可能性一級。
 
 ### 2. 後端 API
@@ -276,6 +278,11 @@ curl -X POST "http://localhost:8000/api/opinion/analyze" \
 ```bash
 # 附件二、附件三級距與空白風險圖像
 curl "http://localhost:8000/api/report/scales"
+
+# 機構層級風險等級換算（全市風險圖像落點用，與附件七各列同一套規則）
+curl -X POST "http://localhost:8000/api/report/grades" \
+     -H "Content-Type: application/json" \
+     -d '{"schools":[{"inst_id":"N11","primary_flag":"餐食代辦費支出異常","composite_score":62.0,"penalty_count":1}]}'
 
 # 單一機構彙總表（demo=true 回傳示範資料，meta.is_sample 為 true）
 curl "http://localhost:8000/api/report/N07?academic_year=112&demo=true"
@@ -323,13 +330,17 @@ curl -X POST "http://localhost:8000/api/report/build" \
 
 ### 等級換算規則
 
-報告以 0–100 分為主體，換算至教育部風險值時採下列對照（與 `api/services/report_builder.py` 一致）：
+報告以 0–100 分為主體，換算至教育部風險值時採下列對照：
 
 | 換算項目 | 規則 |
 | --- | --- |
 | 可能性(L) | 風險分數 ≥60 → 3、30–59 → 2、<30 → 1 |
-| 影響程度(I) | 歷史裁罰 ≥2 件 → 3、1 件 → 2、無 → 1 |
+| 影響程度(I) | 取自該園主要風險項目於附件二之影響程度基準（`RISK_ITEM_CATALOG` 的 `base_impact`，如不當管教、餐食衛生、設施安全為 3），並於嚴重度 ≥0.75 或歷史裁罰 ≥2 件時上調一級 |
 | 風險值(R) | L × I，R ≤ 4 為可容忍風險 |
+
+換算一律由後端 [`api/services/report_builder.py`](api/services/report_builder.py) 執行，前端不自備規則：肆章全市風險圖像的落點透過 `POST /api/report/grades` 取得，該端點與柒章各園附件七列共用同一個 `build_row()`，因此同一間園在兩章必然落在同一格。
+
+> 這裡曾經是兩套規則：前端另以「歷史裁罰件數」換算影響程度，導致同一間園在肆章與柒章出現不同風險值（例如 62.0 分、1 件裁罰、餐食代辦費異常的機構，肆章為 R6 高度風險、柒章為 R9 極度風險）。前端的那套已移除。
 
 ### 敘述文字生成
 

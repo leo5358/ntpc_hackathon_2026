@@ -289,6 +289,27 @@ export interface NarrativeDistrictStat {
   max_score: number;
 }
 
+export interface SchoolGradeInput {
+  inst_id: string;
+  primary_flag?: string;
+  composite_score: number;
+  penalty_count: number;
+}
+
+export interface SchoolGradesRequest {
+  schools: SchoolGradeInput[];
+}
+
+export interface SchoolGradeItem {
+  inst_id: string;
+  risk_item: string;
+  grade: RiskGrade;
+}
+
+export interface SchoolGradesResponse {
+  grades: SchoolGradeItem[];
+}
+
 export interface CityNarrativeRequest {
   roc_year?: number;
   academic_year?: number;

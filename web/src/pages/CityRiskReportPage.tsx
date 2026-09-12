@@ -16,6 +16,7 @@ import type {
   CityNarrativeResponse,
   HealthResponse,
   RiskAssessmentRow,
+  RiskGrade,
 } from "../types/api";
 
 const ACADEMIC_YEARS = [112, 111, 110];
@@ -200,7 +201,11 @@ export const CityRiskReportPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const schools: KindergartenMapPoint[] = SAMPLE_MAP_DATA;
-  const stats = useMemo(() => computeCityStats(schools), [schools]);
+  const [gradeByInstId, setGradeByInstId] = useState<Record<string, RiskGrade>>({});
+  const stats = useMemo(
+    () => computeCityStats(schools, gradeByInstId),
+    [schools, gradeByInstId]
+  );
   const rocYear = academicYear + 1;
   const generatedAt = useMemo(() => new Date().toLocaleString("zh-TW"), [narrative]);
 
@@ -208,12 +213,16 @@ export const CityRiskReportPage: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    // 資料可信度指標（失敗不阻斷報告產出）
+    // 資料可信度指標（失敗不阻斷報告產出）。
+    // 必須用區域變數往下傳：setHealth 不會即時更新本次閉包裡的 health，
+    // 直接讀 state 會讓敘述生成永遠收到 undefined。
+    let current: HealthResponse | null = null;
     try {
-      setHealth(await api.getHealth());
+      current = await api.getHealth();
     } catch {
-      setHealth(null);
+      current = null;
     }
+    setHealth(current);
 
     try {
       const payload = {
@@ -240,8 +249,8 @@ export const CityRiskReportPage: React.FC = () => {
         })),
         top_flags: stats.flagCategories.flatMap((c) => c.flags).slice(0, 8),
         high_risk_institutions: stats.highRisk.map((h) => h.school.name),
-        opinion_coverage: health?.opinion_coverage ?? undefined,
-        parser_verified_rate: health?.parser_verified_rate ?? undefined,
+        opinion_coverage: current?.opinion_coverage ?? undefined,
+        parser_verified_rate: current?.parser_verified_rate ?? undefined,
         use_bedrock: useBedrock,
       };
       setNarrative(await api.postCityNarrative(payload));
@@ -280,7 +289,32 @@ export const CityRiskReportPage: React.FC = () => {
     }
 
     setLoading(false);
-  }, [academicYear, rocYear, stats, useBedrock, health?.opinion_coverage, health?.parser_verified_rate]);
+  }, [academicYear, rocYear, stats, useBedrock]);
+
+  // 附件4 落點等級一律向後端索取，與附件7 各列共用同一套換算
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await api.postSchoolGrades({
+          schools: schools.map((s) => ({
+            inst_id: s.id,
+            primary_flag: s.primary_flag,
+            composite_score: s.latest_score,
+            penalty_count: s.penalty_count,
+          })),
+        });
+        if (active) {
+          setGradeByInstId(Object.fromEntries(res.grades.map((g) => [g.inst_id, g.grade])));
+        }
+      } catch {
+        if (active) setGradeByInstId({});
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [schools]);
 
   useEffect(() => {
     load();
@@ -595,10 +629,18 @@ export const CityRiskReportPage: React.FC = () => {
           <h2 className="text-base font-bold text-slate-900">肆、全市風險圖像</h2>
           <p className="text-xs text-slate-600 leading-relaxed">
             依教育部風險管理推動作業原則附件四繪製。可能性(L) 由 0–100 風險分數換算（≥60 為 3、30–59 為 2、
-            &lt;30 為 1）；影響程度(I) 由歷史裁罰件數換算（≥2 件為 3、1 件為 2、無裁罰為 1）；
-            風險值 R = L × I，R ≤ 4 為可容忍風險。
+            &lt;30 為 1）；影響程度(I) 取自該園主要風險項目於附件二之影響程度基準（如不當管教、餐食衛生、
+            設施安全為 3），並於歷史裁罰 ≥2 件時上調一級；風險值 R = L × I，R ≤ 4 為可容忍風險。
+            本圖落點與柒章各園附件七之「現有風險等級」為同一套換算結果。
           </p>
-          <CityRiskImage stats={stats} />
+          {Object.keys(gradeByInstId).length === 0 ? (
+            <p className="text-xs text-amber-700 border border-amber-200 bg-amber-50 rounded-lg p-3">
+              風險等級換算服務無回應，本圖暫無落點；請確認後端 /api/report/grades 可用後重新產製，
+              勿以空白圖像作為簽陳依據。
+            </p>
+          ) : (
+            <CityRiskImage stats={stats} />
+          )}
         </section>
 
         {/* 風險因子拆解 */}

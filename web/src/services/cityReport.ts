@@ -9,6 +9,7 @@ import {
   RISK_BANDS,
   getRiskLevel,
 } from "../data/institutions";
+import type { RiskGrade } from "../types/api";
 
 export interface LevelBucket {
   key: "high" | "medium" | "low";
@@ -104,21 +105,15 @@ export const categorizeFlag = (flag?: string): FlagCategoryStat["category"] => {
   return "設施與環境";
 };
 
-/** 0–100 分換算教育部可能性(L)：>=60 -> 3、30-59 -> 2、<30 -> 1（與後端 likelihood_from_composite_score 一致） */
-export const likelihoodFromScore = (score: number): number => {
-  if (score >= RISK_BANDS.high) return 3;
-  if (score >= RISK_BANDS.medium) return 2;
-  return 1;
-};
-
-/** 裁罰件數換算影響程度(I)：>=2 件 -> 3、1 件 -> 2、無 -> 1 */
-export const impactFromPenalties = (penaltyCount: number): number => {
-  if (penaltyCount >= 2) return 3;
-  if (penaltyCount === 1) return 2;
-  return 1;
-};
-
-export const computeCityStats = (schools: KindergartenMapPoint[]): CityStats => {
+export const computeCityStats = (
+  schools: KindergartenMapPoint[],
+  /**
+   * 各機構的風險等級，由 POST /api/report/grades 換算。
+   * 等級一律取自後端，前端不自備一套規則——否則全市風險圖像(肆)會與
+   * 機構專案報告(柒)對同一間園給出不同的風險值。
+   */
+  gradeByInstId: Record<string, RiskGrade> = {}
+): CityStats => {
   const total = schools.length;
   const scores = schools.map((s) => s.latest_score);
   const averageScore = round1(mean(scores));
@@ -195,7 +190,7 @@ export const computeCityStats = (schools: KindergartenMapPoint[]): CityStats => 
     })
     .filter((c) => c.count > 0);
 
-  // 附件4 風險圖像落點
+  // 附件4 風險圖像落點：等級全部取自後端換算結果，尚未取得者不落點
   const matrix: MatrixPlacement[] = [];
   for (const impact of [3, 2, 1]) {
     for (const likelihood of [1, 2, 3]) {
@@ -203,11 +198,10 @@ export const computeCityStats = (schools: KindergartenMapPoint[]): CityStats => 
         likelihood,
         impact,
         risk_value: likelihood * impact,
-        schools: schools.filter(
-          (s) =>
-            likelihoodFromScore(s.latest_score) === likelihood &&
-            impactFromPenalties(s.penalty_count) === impact
-        ),
+        schools: schools.filter((s) => {
+          const grade = gradeByInstId[s.id];
+          return grade?.likelihood === likelihood && grade?.impact === impact;
+        }),
       });
     }
   }
