@@ -14,6 +14,7 @@ help:
 	@echo "  make build-frontend      - Build static frontend assets"
 	@echo "  make test-opinion-crawler - Run end-to-end opinion crawler & Bedrock test"
 	@echo "  make smoke-backend       - Offline endpoint smoke tests (no AWS needed)"
+	@echo "  make upload-scores       - Upload model score files to private S3 (needed before deploy)"
 	@echo "  make deploy-api          - Deploy backend to Lambda + API Gateway"
 	@echo "  make deploy-web          - Deploy frontend to S3 + CloudFront (needs API_URL)"
 	@echo "  make deploy              - Deploy backend then frontend"
@@ -50,6 +51,21 @@ STAGE ?= dev
 
 smoke-backend:
 	$(PYTHON) -m infra.smoke_local
+
+# 模型評分檔不進 repo、也不打包進 Lambda（NOTICE.md），改由私有 S3 於冷啟動取得。
+# 跑完 ml/USAGE.md 的三個步驟後執行本指令，再 make deploy-api。
+SCORES_BUCKET ?= $(shell $(PYTHON) -c "import yaml;print(yaml.safe_load(open('config.yaml'))['aws']['bucket_name'])" 2>/dev/null)
+SCORES_PREFIX ?= scores
+
+upload-scores:
+	@test -n "$(SCORES_BUCKET)" || (echo "SCORES_BUCKET 未設定（config.yaml 的 aws.bucket_name 或環境變數）"; exit 1)
+	@test -f ml/data/processed/risk_scores_latest.csv || (echo "缺 ml/data/processed/risk_scores_latest.csv，請先依 ml/USAGE.md 產生"; exit 1)
+	aws s3 cp ml/data/processed/risk_scores_latest.csv s3://$(SCORES_BUCKET)/$(SCORES_PREFIX)/risk_scores_latest.csv
+	aws s3 cp ml/data/processed/penalties_all.csv     s3://$(SCORES_BUCKET)/$(SCORES_PREFIX)/penalties_all.csv
+	@test -f $(HOME)/.cache/ntpc_hackathon/preschools.json && \
+		aws s3 cp $(HOME)/.cache/ntpc_hackathon/preschools.json s3://$(SCORES_BUCKET)/$(SCORES_PREFIX)/preschools.json || \
+		echo "（略過 preschools.json：本機快取不存在，線上將缺座標與行政區）"
+	@echo "已上傳至 s3://$(SCORES_BUCKET)/$(SCORES_PREFIX)/"
 
 deploy-api:
 	$(PYTHON) -m infra.deploy_api --stage $(STAGE) --output-url-file .api_url

@@ -70,6 +70,18 @@ flowchart TD
 - 輸出兩種門檻：`priority_flag`（每年前 10% 優先稽查，precision 約為隨機的 2.2 倍）與 `screen_flag`（召回 90% 的廣泛篩檢名單）。
 - 訓練與推論程式：[`ml/pipeline/s5_train.py`](ml/pipeline/s5_train.py)、[`ml/pipeline/s6_validate.py`](ml/pipeline/s6_validate.py)，產出 [`ml/data/processed/risk_scores_latest.csv`](ml/USAGE.md)（不隨 repo 散佈，需在本機重跑產生）。
 
+### 0–100 風險分數的定義
+
+前後端一致使用 **全市風險百分位 × 100** 作為 0–100 分，門檻對齊模型自己的兩個操作點（定義於 `web/src/data/institutions.ts` 的 `RISK_BANDS`）：
+
+| 等級 | 分數 | 對應 |
+| --- | --- | --- |
+| 高風險 | ≥90 | `priority_flag`：優先稽查名單（全市前 10%，約 121 園） |
+| 中風險 | 30–89 | 涵蓋 `screen_flag` 篩檢名單（90% 召回門檻約在百分位 0.32） |
+| 低風險 | <30 | 其餘 |
+
+> **不要改用 `risk_probability × 100`。** 那是校準後的隔年受裁罰機率，量級由基準裁罰率決定（實測中位數 0.09、最大 0.56），全市不會有任何一園達到高風險門檻，色階與附件四風險圖像會整個失效。分數是相對排序，不是絕對違規機率。
+
 ### 與原始設計的差異
 
 專案初期規劃了一套 5 因子加權的「綜合風險指數」（裁罰機率 45% + 預決算殘差 20% + Isolation Forest 異常度 15% + 輿情風險 10% + 規則旗標 10%，仍保留於 `config.yaml` 的 `model.weights` 與 `api/services/report_builder.py` 供 API/前端展示欄位使用）。但實測後：
@@ -269,7 +281,7 @@ curl -X POST "http://localhost:8000/api/opinion/analyze" \
   | 裁罰機率或嚴重度 ≥ 0.20，或近年裁罰 ≥ 1 件 | 2（可能） |
   | 其餘 | 1（幾乎不可能） |
 
-  上表為未提供綜合分數時的門檻；若訊號帶有 0–100 的 `composite_score`（全市綜整報告即走此路徑），可能性(L) 改以分數換算（≥60 → 3、30–59 → 2、<30 → 1）。兩者共用同一個 `build_row()`。
+  上表為未提供綜合分數時的門檻；若訊號帶有 0–100 的 `composite_score`（全市綜整報告即走此路徑），可能性(L) 改以風險百分位換算（≥90 → 3、30–89 → 2、<30 → 1）。兩者共用同一個 `build_row()`。
 
   影響程度(I) 取自風險項目目錄之基準值（如體罰、餐食衛生、設施安全為 3），並於嚴重度 ≥ 0.75 或裁罰 ≥ 2 件時上調一級；殘餘風險採保守假設，僅由新增對策降低可能性一級。
 
@@ -324,7 +336,7 @@ curl -X POST "http://localhost:8000/api/report/build" \
 | 肆、全市風險圖像 | 附件四 3×3 矩陣，標示各園落點 |
 | 伍、風險因子拆解 | 旗標依人力／財務／治理／設施分類統計，裁罰與分數之一致性 |
 | 陸、稽查資源配置建議 | Bedrock 建議＋依附件三判斷基準與地理群聚之排程建議 |
-| 柒、高風險機構專案報告 | 分數 ≥60 之機構逐所展開：定位、旗標、附件七列、建議查核重點 |
+| 柒、高風險機構專案報告 | 風險百分位 ≥90（模型優先稽查名單）之機構展開：定位、旗標、附件七列、建議查核重點 |
 | 捌、模型方法論與使用限制 | 評分公式、AUC／Macro-F1／Parser 驗證率、免責聲明 |
 | 玖、附錄 | 全機構風險評分明細表 |
 
@@ -334,7 +346,7 @@ curl -X POST "http://localhost:8000/api/report/build" \
 
 | 換算項目 | 規則 |
 | --- | --- |
-| 可能性(L) | 風險分數 ≥60 → 3、30–59 → 2、<30 → 1 |
+| 可能性(L) | 風險百分位 ≥90 → 3、30–89 → 2、<30 → 1 |
 | 影響程度(I) | 取自該園主要風險項目於附件二之影響程度基準（`RISK_ITEM_CATALOG` 的 `base_impact`，如不當管教、餐食衛生、設施安全為 3），並於嚴重度 ≥0.75 或歷史裁罰 ≥2 件時上調一級 |
 | 風險值(R) | L × I，R ≤ 4 為可容忍風險 |
 
@@ -361,9 +373,17 @@ curl -X POST "http://localhost:8000/api/report/city/narrative" \
 
 ### 資料源
 
-14 園精選展示資料集中於 `web/src/data/institutions.ts`（風險地圖與綜整報告共用），統計計算集中於 `web/src/services/cityReport.ts`。
+風險地圖與全市綜整報告都經由 [`web/src/services/institutions.ts`](web/src/services/institutions.ts) 讀取 `/api/institutions`，統計計算集中於 `web/src/services/cityReport.ts`。`web/src/data/institutions.ts` 的 14 園資料僅作為 API 無回應時的離線備援，此時貳章會明確標示「目前使用離線備援樣本，不代表全市」。
 
-動態載入全新北 1,211～1,218 園的整合已完成（[`api/services/institution_store.py`](api/services/institution_store.py)），會在偵測到 `ml/data/processed/risk_scores_latest.csv` 與 preschools 快取存在時自動切換為完整資料集並改由 `/api/institutions` 提供；本機若未先依 [`ml/USAGE.md`](ml/USAGE.md) 產生該 CSV，則自動退回 14 園展示資料，頁面邏輯無需改寫。
+後端在偵測到 `ml/data/processed/risk_scores_latest.csv` 與 preschools 快取時自動切換為全新北 1,211 園（[`api/services/institution_store.py`](api/services/institution_store.py)），否則回退為 14 園精選資料，前端無須改寫。
+
+規模相關設計：
+
+| 項目 | 做法 |
+| --- | --- |
+| 柒章專案報告 | 以 `POST /api/report/build-batch` 一次取回，逐所展開分數最高的前 20 所，其餘於章首註明並列於玖章附錄 |
+| 玖章附錄 | 全機構完整列出（標題顯示總筆數），供稽核回溯 |
+| 風險項目對映 | 前端送 `primary_flag_code`（由 `/api/institutions` 提供）而非中文標題，避免字串比對失準 |
 
 ---
 
@@ -439,6 +459,28 @@ make deploy STAGE=prod          # 換 stage
 所有腳本皆為 create-or-update，重複執行安全。後端打包使用
 [`requirements-lambda.txt`](requirements-lambda.txt)（排除 uvicorn、boto3 與 pandas），
 以 manylinux wheel 產生約 4.4MB 的部署包。
+
+### 模型評分檔如何上線（部署前必做）
+
+部署包只含 `api/`、`pipeline/` 與 `config.yaml`（`infra/deploy_api.py` 的 `INCLUDE_PATHS`），**不含 `ml/`**。評分檔由第三方資料衍生，依 [`NOTICE.md`](NOTICE.md) 不放 repo 也不打包進 Lambda，改由冷啟動時自私有 S3 取得（[`api/services/score_cache.py`](api/services/score_cache.py)，掛在 `api/main.py` 的 lifespan）。
+
+```bash
+# 1. 產生評分檔（見 ml/USAGE.md；需要 dataset.zip）
+cd ml && python -m pipeline.s3_penalties && python -m pipeline.s4b_features_all && python -m pipeline.s6_validate && cd ..
+
+# 2. 上傳到私有 S3
+make upload-scores                                  # bucket 取自 config.yaml 的 aws.bucket_name
+make upload-scores SCORES_BUCKET=your-bucket        # 或明確指定
+
+# 3. 部署（SCORES_BUCKET 會寫入 Lambda 環境變數）
+SCORES_BUCKET=your-bucket make deploy-api
+```
+
+會下載的三個物件放在 `s3://<bucket>/<scores 前綴>/`：`risk_scores_latest.csv`（必要）、`penalties_all.csv`、`preschools.json`（缺少時僅少座標與行政區）。Bucket 與前綴可用環境變數 `SCORES_BUCKET` / `SCORES_PREFIX` 覆寫 `config.yaml` 的 `aws.bucket_name` 與 `aws.s3_prefixes.scores`。Lambda 角色的 inline policy already 含 `s3:GetObject`，不需另外授權。
+
+> **沒做這一步會怎樣**：Lambda 找不到評分檔 → 退回少數手寫示範機構 → 排行與全市報告**一所高風險都沒有**（示範資料最高分 78.5，未達風險百分位 90 的門檻），柒章整章空白。下載或載入失敗都不會中斷啟動，只會留下警告日誌並沿用既有資料。
+>
+> `config.yaml` 目前的 `bucket_name: kiro-workshop-default` 是佔位值，請改成實際 bucket 或以環境變數覆寫。
 
 ### GitHub Actions
 

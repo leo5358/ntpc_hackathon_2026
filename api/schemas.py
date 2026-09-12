@@ -34,6 +34,11 @@ class InstitutionListItem(BaseModel):
     latitude: Optional[float] = Field(None, description="Latitude from preschools.json")
     longitude: Optional[float] = Field(None, description="Longitude from preschools.json")
     address: Optional[str] = Field(None, description="Institution address")
+    district: Optional[str] = Field(None, description="行政區，供地圖與全市報告分組")
+    primary_flag: Optional[str] = Field(None, description="權重最高之風險旗標標題")
+    primary_flag_code: Optional[str] = Field(
+        None, description="該旗標對應之風險項目代碼，供前端穩定分類（勿以中文字串比對）"
+    )
 
 
 class ShapContribution(BaseModel):
@@ -376,6 +381,7 @@ class SchoolGradeInput(BaseModel):
     """全市風險圖像所需的單一機構輸入。"""
 
     inst_id: str
+    code: str = Field(default="", description="風險項目代碼；優先於 primary_flag 文字對映")
     primary_flag: Optional[str] = None
     composite_score: float = Field(..., ge=0.0, le=100.0, description="0–100 綜合風險分數")
     penalty_count: int = 0
@@ -410,3 +416,13 @@ class RiskReportBuildRequest(BaseModel):
     composite_score: Optional[float] = None
     signals: List[ModelSignalInput] = []
     source_urls: List[str] = []
+
+
+class RiskReportBatchRequest(BaseModel):
+    """POST /api/report/build-batch：一次產製多份彙總表，避免前端逐所發請求。"""
+
+    reports: List[RiskReportBuildRequest] = Field(default_factory=list, max_length=200)
+
+
+class RiskReportBatchResponse(BaseModel):
+    reports: List[RiskAssessmentReport] = Field(default_factory=list)

@@ -1,25 +1,34 @@
 /**
- * 新北市幼兒園評分資料（前端共用資料源）。
+ * 新北市幼兒園評分資料。
  *
- * 風險地圖與全市綜整報告皆讀取本檔，避免同一份資料在兩個頁面各存一份。
- * 待 Stage 5 分數落地後，本檔可改為由 /api/institutions 取得。
+ * 風險地圖與全市綜整報告都優先讀取 /api/institutions（見 services/institutions.ts），
+ * 本檔的 SAMPLE_MAP_DATA 僅作為 API 無回應時的離線備援與版面驗證資料。
  */
 
 export interface KindergartenMapPoint {
   id: string;
   name: string;
-  peer_group: "市立幼兒園" | "非營利園";
+  /** 後端可能回傳市立／非營利／私立，不限縮為聯集型別 */
+  peer_group: string;
   latest_score: number;
   latitude: number;
   longitude: number;
   district: string;
   penalty_count: number;
   primary_flag?: string;
+  /** 風險項目代碼，前端據此分類；勿以中文字串比對 */
+  primary_flag_code?: string;
 }
 
-/** 風險色階門檻：高風險 >=60、中風險 30-59、低風險 <30 */
+/**
+ * 風險色階門檻。分數是全市風險百分位（0–100），門檻對齊模型自己的兩個操作點：
+ *   高風險 >=90：優先稽查名單（前 10%），模型勝過簡單規則之處
+ *   中風險 30–89：落在篩檢名單範圍（90% 召回門檻約在百分位 0.32）
+ *   低風險 <30
+ * 見 ml/docs/MODEL_REPORT.md。
+ */
 export const RISK_BANDS = {
-  high: 60,
+  high: 90,
   medium: 30,
 } as const;
 

@@ -4,8 +4,8 @@ import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaf
 import { Filter, AlertCircle, ArrowRight, MapPin } from "lucide-react";
 import "leaflet/dist/leaflet.css";
 
-import { SAMPLE_MAP_DATA, getRiskLevel, KindergartenMapPoint } from "../data/institutions";
-import { api } from "../services/api";
+import { SAMPLE_MAP_DATA, getRiskLevel, KindergartenMapPoint, RISK_BANDS } from "../data/institutions";
+import { loadInstitutions } from "../services/institutions";
 
 // Taiwan New Taipei City geographical center
 const NTPC_CENTER: [number, number] = [25.012, 121.465]; // Banqiao / NTPC center
@@ -38,33 +38,8 @@ export const RiskMapPage: React.FC = () => {
   useEffect(() => {
     let active = true;
     (async () => {
-      try {
-        const data = await api.getInstitutions();
-        if (active && data && data.length > 0) {
-          const mapped: KindergartenMapPoint[] = data.map((item) => {
-            const fallback = SAMPLE_MAP_DATA.find((s) => s.id === item.id);
-            let dist = fallback?.district;
-            if (!dist && item.address) {
-              const m = item.address.match(/新北市([^\s0-9路街巷弄號]+[區鄉鎮市])/);
-              dist = m ? m[1] : undefined;
-            }
-            return {
-              id: item.id,
-              name: item.name,
-              peer_group: (item.peer_group as any) || fallback?.peer_group || "私立幼兒園",
-              latest_score: item.latest_score ?? fallback?.latest_score ?? 0,
-              latitude: item.latitude ?? fallback?.latitude ?? 25.012,
-              longitude: item.longitude ?? fallback?.longitude ?? 121.465,
-              district: dist || "新北市",
-              penalty_count: item.penalty_count ?? fallback?.penalty_count ?? 0,
-              primary_flag: fallback?.primary_flag || (item.penalty_count > 0 ? `歷史處分 ${item.penalty_count} 筆` : "正常"),
-            };
-          });
-          setSchools(mapped);
-        }
-      } catch (err) {
-        console.warn("Failed to fetch institutions from API, using default data", err);
-      }
+      const { schools: loaded } = await loadInstitutions();
+      if (active) setSchools(loaded);
     })();
     return () => {
       active = false;
@@ -74,9 +49,13 @@ export const RiskMapPage: React.FC = () => {
   const filteredSchools = useMemo(() => {
     return schools.filter((s) => {
       if (groupFilter !== "all" && s.peer_group !== groupFilter) return false;
-      if (riskFilter === "high" && s.latest_score < 60) return false;
-      if (riskFilter === "medium" && (s.latest_score < 30 || s.latest_score >= 60)) return false;
-      if (riskFilter === "low" && s.latest_score >= 30) return false;
+      if (riskFilter === "high" && s.latest_score < RISK_BANDS.high) return false;
+      if (
+        riskFilter === "medium" &&
+        (s.latest_score < RISK_BANDS.medium || s.latest_score >= RISK_BANDS.high)
+      )
+        return false;
+      if (riskFilter === "low" && s.latest_score >= RISK_BANDS.medium) return false;
       return true;
     });
   }, [schools, riskFilter, groupFilter]);
@@ -108,15 +87,17 @@ export const RiskMapPage: React.FC = () => {
           <span className="text-slate-500 font-semibold">風險色階:</span>
           <span className="flex items-center space-x-1.5">
             <span className="w-3.5 h-3.5 rounded-full bg-rose-500 border border-rose-600 inline-block"></span>
-            <span className="text-slate-700 font-medium">高風險 (&ge;60)</span>
+            <span className="text-slate-700 font-medium">高風險 (&ge;{RISK_BANDS.high})</span>
           </span>
           <span className="flex items-center space-x-1.5">
             <span className="w-3.5 h-3.5 rounded-full bg-amber-500 border border-amber-600 inline-block"></span>
-            <span className="text-slate-700 font-medium">中風險 (30-59)</span>
+            <span className="text-slate-700 font-medium">
+              中風險 ({RISK_BANDS.medium}-{RISK_BANDS.high - 1})
+            </span>
           </span>
           <span className="flex items-center space-x-1.5">
             <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 border border-emerald-600 inline-block"></span>
-            <span className="text-slate-700 font-medium">低風險 (&lt;30)</span>
+            <span className="text-slate-700 font-medium">低風險 (&lt;{RISK_BANDS.medium})</span>
           </span>
         </div>
       </div>
@@ -134,7 +115,9 @@ export const RiskMapPage: React.FC = () => {
             >
               <option value="all">全部風險等級</option>
               <option value="high">僅高風險 (&ge;60)</option>
-              <option value="medium">僅中風險 (30-59)</option>
+              <option value="medium">
+                僅中風險 ({RISK_BANDS.medium}-{RISK_BANDS.high - 1})
+              </option>
               <option value="low">僅低風險 (&lt;30)</option>
             </select>
           </div>

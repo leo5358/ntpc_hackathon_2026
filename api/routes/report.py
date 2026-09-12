@@ -12,6 +12,8 @@ from api.schemas import (
     LikelihoodScaleItem,
     RiskAssessmentReport,
     RiskMatrixCell,
+    RiskReportBatchRequest,
+    RiskReportBatchResponse,
     RiskReportBuildRequest,
     RiskScalesResponse,
     SchoolGradeItem,
@@ -60,6 +62,7 @@ async def grade_schools(req: SchoolGradesRequest):
             SchoolGradeItem(
                 inst_id=school.inst_id,
                 **report_builder.grade_for_school(
+                    code=school.code,
                     primary_flag=school.primary_flag,
                     composite_score=school.composite_score,
                     penalty_count=school.penalty_count,
@@ -74,6 +77,18 @@ async def grade_schools(req: SchoolGradesRequest):
 async def build_report_from_model(req: RiskReportBuildRequest):
     """由管線／模型輸出直接產製報表，供批次產生或離線驗證使用。"""
     return report_builder.build_report(req)
+
+
+@router.post("/build-batch", response_model=RiskReportBatchResponse)
+async def build_reports_batch(req: RiskReportBatchRequest):
+    """一次產製多份彙總表。
+
+    全市綜整報告的柒章需要多所機構的附件七列，逐所發請求在全市 1,200 園的
+    規模下會產生上百個往返；改由此端點一次取回。
+    """
+    return RiskReportBatchResponse(
+        reports=[report_builder.build_report(r) for r in req.reports]
+    )
 
 
 @router.get("/{inst_id}", response_model=RiskAssessmentReport)

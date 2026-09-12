@@ -9,6 +9,9 @@ export interface HealthResponse {
 }
 
 export interface InstitutionListItem {
+  district?: string | null;
+  primary_flag?: string | null;
+  primary_flag_code?: string | null;
   id: string;
   name: string;
   peer_group: "市立幼兒園" | "非營利園" | string;
@@ -289,8 +292,17 @@ export interface NarrativeDistrictStat {
   max_score: number;
 }
 
+export interface RiskReportBatchRequest {
+  reports: RiskReportBuildRequest[];
+}
+
+export interface RiskReportBatchResponse {
+  reports: RiskAssessmentReport[];
+}
+
 export interface SchoolGradeInput {
   inst_id: string;
+  code?: string;
   primary_flag?: string;
   composite_score: number;
   penalty_count: number;

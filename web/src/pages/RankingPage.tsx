@@ -14,7 +14,7 @@ import {
 import { Link } from "react-router-dom";
 import { api } from "../services/api";
 import { RankingItem } from "../types/api";
-import { getRiskLevel } from "../data/institutions";
+import { getRiskLevel, RISK_BANDS } from "../data/institutions";
 
 export const RankingPage: React.FC = () => {
   const [year, setYear] = useState<number>(112);
@@ -30,7 +30,8 @@ export const RankingPage: React.FC = () => {
     setError(null);
     try {
       const g = group === "all" ? undefined : group;
-      const min = minScore === "high" ? 60 : minScore === "medium" ? 30 : undefined;
+      const min =
+        minScore === "high" ? RISK_BANDS.high : minScore === "medium" ? RISK_BANDS.medium : undefined;
       const res = await api.getRankings(year, g, min);
       setItems(res.items);
     } catch (err: any) {
@@ -155,8 +156,8 @@ export const RankingPage: React.FC = () => {
             className="bg-slate-50 border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">全部分數等級</option>
-            <option value="high">高風險 (≥60)</option>
-            <option value="medium">中高風險 (≥30)</option>
+            <option value="high">高風險 (≥{RISK_BANDS.high})</option>
+            <option value="medium">中高風險 (≥{RISK_BANDS.medium})</option>
           </select>
         </div>
 

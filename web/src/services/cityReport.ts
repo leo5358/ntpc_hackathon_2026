@@ -44,7 +44,7 @@ export interface HistogramBin {
 }
 
 export interface FlagCategoryStat {
-  category: "人力配置" | "財務執行" | "治理與立案" | "設施與環境" | "無異常";
+  category: "人力配置" | "財務執行" | "治理與立案" | "設施與環境" | "模型預警" | "其他" | "無異常";
   count: number;
   flags: string[];
 }
@@ -95,14 +95,39 @@ const median = (values: number[]) => {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 };
 
+/**
+ * 風險項目代碼 -> 「風險因子拆解」章節的分類。
+ *
+ * 以代碼而非中文字串比對：字串比對會因為關鍵字碰撞而誤判
+ * （「餐食代辦費支出異常」曾因含「支出」被歸到財務執行），
+ * 且無法涵蓋後端新增的項目。
+ */
+const FLAG_CATEGORY_BY_CODE: Record<string, FlagCategoryStat["category"]> = {
+  UNDERSTAFFING: "人力配置",
+  "OPINION_師資流動/人力不足": "人力配置",
+  BUDGET_RESIDUAL: "財務執行",
+  BENFORD_ANOMALY: "財務執行",
+  UTILITY_COST_HIGH: "財務執行",
+  OPERATOR_CHURN: "治理與立案",
+  OPINION_行政與立案: "治理與立案",
+  OPINION_收費爭議: "治理與立案",
+  PENALTY_RECIDIVISM: "治理與立案",
+  OPINION_設施安全: "設施與環境",
+  ASSET_MAINTENANCE_LOW: "設施與環境",
+  OPINION_餐食與衛生: "設施與環境",
+  "OPINION_不當管教/體罰": "設施與環境",
+  MODEL_SCREENING: "模型預警",
+};
+
 /** 風險旗標歸類，用於「風險因子拆解」章節 */
-export const categorizeFlag = (flag?: string): FlagCategoryStat["category"] => {
-  if (!flag || flag.includes("正常") || flag.includes("穩健")) return "無異常";
-  if (flag.includes("用人費用") || flag.includes("教保員") || flag.includes("師生比")) return "人力配置";
-  if (flag.includes("決算") || flag.includes("預算") || flag.includes("支出") || flag.includes("水電"))
-    return "財務執行";
-  if (flag.includes("超收") || flag.includes("受託") || flag.includes("立案")) return "治理與立案";
-  return "設施與環境";
+export const categorizeFlag = (
+  code?: string,
+  flag?: string
+): FlagCategoryStat["category"] => {
+  if (code && FLAG_CATEGORY_BY_CODE[code]) return FLAG_CATEGORY_BY_CODE[code];
+  if (!code && (!flag || flag.includes("正常") || flag.includes("穩健"))) return "無異常";
+  // 後端新增了目錄項目但前端尚未對映時，落到「其他」而非誤報為設施風險
+  return "其他";
 };
 
 export const computeCityStats = (
@@ -121,9 +146,9 @@ export const computeCityStats = (
 
   // 風險等級分布
   const levelDefs: Array<{ key: LevelBucket["key"]; label: string; color: string }> = [
-    { key: "high", label: "高風險 (≥60)", color: "#ef4444" },
-    { key: "medium", label: "中風險 (30–59)", color: "#f59e0b" },
-    { key: "low", label: "低風險 (<30)", color: "#10b981" },
+    { key: "high", label: `高風險 (≥${RISK_BANDS.high})`, color: "#ef4444" },
+    { key: "medium", label: `中風險 (${RISK_BANDS.medium}–${RISK_BANDS.high - 1})`, color: "#f59e0b" },
+    { key: "low", label: `低風險 (<${RISK_BANDS.medium})`, color: "#10b981" },
   ];
   const levels: LevelBucket[] = levelDefs.map((def) => {
     const count = schools.filter((s) => getRiskLevel(s.latest_score).key === def.key).length;
@@ -177,11 +202,15 @@ export const computeCityStats = (
     "財務執行",
     "治理與立案",
     "設施與環境",
+    "模型預警",
+    "其他",
     "無異常",
   ];
   const flagCategories: FlagCategoryStat[] = categories
     .map((category) => {
-      const members = schools.filter((s) => categorizeFlag(s.primary_flag) === category);
+      const members = schools.filter(
+        (s) => categorizeFlag(s.primary_flag_code, s.primary_flag) === category
+      );
       return {
         category,
         count: members.length,
