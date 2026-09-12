@@ -27,3 +27,6 @@ data/curated/
 data/scores/
 *.parquet
 *.csv
+
+# Plans & Documentation drafts
+*plan*.md
