@@ -11,6 +11,11 @@ help:
 	@echo "  make run-frontend        - Start Vite development server"
 	@echo "  make build-frontend      - Build static frontend assets"
 	@echo "  make test-opinion-crawler - Run end-to-end opinion crawler & Bedrock test"
+	@echo "  make smoke-backend       - Offline endpoint smoke tests (no AWS needed)"
+	@echo "  make deploy-api          - Deploy backend to Lambda + API Gateway"
+	@echo "  make deploy-web          - Deploy frontend to S3 + CloudFront (needs API_URL)"
+	@echo "  make deploy              - Deploy backend then frontend"
+	@echo "  make verify-deploy       - Verify deployed Lambda by direct invoke"
 
 install-backend:
 	pip install -r requirements.txt
@@ -32,6 +37,22 @@ run-frontend:
 
 build-frontend:
 	cd web && npm run build
+
+STAGE ?= dev
+
+smoke-backend:
+	$(PYTHON) -m infra.smoke_local
+
+deploy-api:
+	$(PYTHON) -m infra.deploy_api --stage $(STAGE) --output-url-file .api_url
+
+deploy-web:
+	$(PYTHON) -m infra.deploy_web --stage $(STAGE) --api-url "$(shell cat .api_url 2>/dev/null)"
+
+deploy: deploy-api verify-deploy deploy-web
+
+verify-deploy:
+	$(PYTHON) -m infra.verify_deploy --stage $(STAGE)
 
 test-opinion-crawler:
 	$(PYTHON) -m pipeline.nlp.service --name "新北市北大非營利幼兒園" --id "N07" --district "三峽區"

@@ -1,0 +1,88 @@
+name: CI
+
+# 不需要任何 AWS 憑證，每次 push 與 PR 都會跑
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: 前端型別檢查與建置
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安裝相依
+        run: npm ci
+
+      - name: 型別檢查與建置
+        run: npm run build
+
+      - name: 保留建置產物
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 7
+
+  backend:
+    name: 後端匯入與端點煙霧測試
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安裝相依
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt httpx
+
+      - name: 檢查 Lambda 打包相依可解析
+        run: |
+          pip download -r requirements-lambda.txt \
+            --dest /tmp/lambda-wheels \
+            --platform manylinux2014_x86_64 \
+            --implementation cp \
+            --python-version 3.12 \
+            --only-binary=:all: \
+            --quiet
+          echo "Lambda 相依解析成功"
+
+      - name: 應用程式可匯入
+        run: python -c "from api.main import app; from api.handler import handler; print('import ok')"
+
+      - name: 端點煙霧測試
+        run: python -m infra.smoke_local
+
+  conflict-markers:
+    name: 檢查未解決的合併衝突
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 掃描衝突標記
+        run: |
+          if grep -rnE '^(<<<<<<< |>>>>>>> )' --include='*.py' --include='*.ts' --include='*.tsx' \
+               --include='*.css' --include='*.yml' --include='*.yaml' --include='*.md' . ; then
+            echo "::error::發現未解決的合併衝突標記"
+            exit 1
+          fi
+          echo "無衝突標記"
