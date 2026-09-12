@@ -141,6 +141,7 @@ export const RankingPage: React.FC = () => {
             className="bg-slate-50 border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">全部同儕群組</option>
+            <option value="私立幼兒園">私立幼兒園</option>
             <option value="市立幼兒園">市立幼兒園</option>
             <option value="非營利園">非營利園</option>
           </select>
@@ -260,7 +261,9 @@ export const RankingPage: React.FC = () => {
                           className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
                             item.peer_group === "市立幼兒園"
                               ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                              : item.peer_group === "非營利園"
+                              ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                              : "bg-purple-50 text-purple-700 border border-purple-200"
                           }`}
                         >
                           {item.peer_group}

@@ -17,6 +17,7 @@ export const App: React.FC = () => {
           <Route index element={<RankingPage />} />
           <Route path="map" element={<RiskMapPage />} />
           <Route path="i/:id" element={<InstitutionDetailPage />} />
+          <Route path="institutions/:id" element={<InstitutionDetailPage />} />
           <Route path="report" element={<CityRiskReportPage />} />
           <Route path="report/city" element={<CityRiskReportPage />} />
           <Route path="report/:id" element={<RiskReportPage />} />

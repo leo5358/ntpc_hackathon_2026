@@ -43,16 +43,21 @@ export const RiskMapPage: React.FC = () => {
         if (active && data && data.length > 0) {
           const mapped: KindergartenMapPoint[] = data.map((item) => {
             const fallback = SAMPLE_MAP_DATA.find((s) => s.id === item.id);
+            let dist = fallback?.district;
+            if (!dist && item.address) {
+              const m = item.address.match(/新北市([^\s0-9路街巷弄號]+[區鄉鎮市])/);
+              dist = m ? m[1] : undefined;
+            }
             return {
               id: item.id,
               name: item.name,
-              peer_group: (item.peer_group as any) || fallback?.peer_group || "非營利園",
+              peer_group: (item.peer_group as any) || fallback?.peer_group || "私立幼兒園",
               latest_score: item.latest_score ?? fallback?.latest_score ?? 0,
               latitude: item.latitude ?? fallback?.latitude ?? 25.012,
               longitude: item.longitude ?? fallback?.longitude ?? 121.465,
-              district: fallback?.district || "新北市",
+              district: dist || "新北市",
               penalty_count: item.penalty_count ?? fallback?.penalty_count ?? 0,
-              primary_flag: fallback?.primary_flag || (item.penalty_count > 0 ? "有歷史裁罰" : "正常"),
+              primary_flag: fallback?.primary_flag || (item.penalty_count > 0 ? `歷史處分 ${item.penalty_count} 筆` : "正常"),
             };
           });
           setSchools(mapped);
@@ -142,8 +147,9 @@ export const RiskMapPage: React.FC = () => {
               className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">全部群組</option>
-              <option value="非營利園">非營利園</option>
+              <option value="私立幼兒園">私立幼兒園</option>
               <option value="市立幼兒園">市立幼兒園</option>
+              <option value="非營利園">非營利園</option>
             </select>
           </div>
         </div>
