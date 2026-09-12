@@ -2,15 +2,17 @@
 
     python -m pipeline.s6_validate
 
-Outputs: models/risk_model_all.joblib, models/validation_all.json, data/processed/risk_scores_latest.csv
+Outputs: models/risk_model_all.joblib, models/risk_model_all.json (portable parameters),
+         models/validation_all.json, data/processed/risk_scores_latest.csv
 
 Two validations, both grouped so no institution is on both sides of a split:
   1. across institutions — 5 folds × 5 repeats, 95% CI from an institution-level bootstrap
   2. forward in time — fit on years ≤ SPLIT_YEAR, test on later years, with the screening threshold
      fixed on the training years only (the test years never influence it)
 
-The shipped model is the logistic regression that won s5_train, plus a sigmoid-calibrated copy whose
-probabilities match the observed penalty rate. Two operating points are recorded:
+The shipped model is the logistic regression that won s5_train, plus a Platt mapping fitted on its
+out-of-fold scores so the displayed probability matches the observed penalty rate. Its parameters are
+also written as plain JSON so the model can be re-implemented anywhere. Two operating points are recorded:
   screen    the score above which 90% of penalties fall — the "do not miss" list (~70% of 園)
   priority  the top 10% of each year's scores — where the model beats simple rules (~2× hit rate)
 """
@@ -19,11 +21,9 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -39,6 +39,11 @@ PRIORITY_SHARE = 0.10
 def make_model():
     return make_pipeline(SimpleImputer(strategy="median"), StandardScaler(),
                          LogisticRegression(C=0.3, class_weight="balanced", max_iter=5000))
+
+
+def logit(p):
+    p = np.clip(p, 1e-6, 1 - 1e-6)
+    return np.log(p / (1 - p))
 
 
 def threshold_for_recall(y: np.ndarray, score: np.ndarray, recall: float) -> float:
@@ -106,14 +111,28 @@ def main():
         rule_every_private=confusion(y_future, future["group"].eq("私立")),
         rule_penalised_before=confusion(y_future, future["prior_penalties"].gt(0)))
 
-    # 3. ship: ranker for order and flags, calibrated copy for the displayed probability
+    # 3. ship: the ranker orders and flags; a Platt mapping fitted on its out-of-fold scores turns the
+    #    class-weighted (hence inflated) output into a probability that matches the penalty rate
     ranker = make_model().fit(lab[features], y)
-    calibrator = CalibratedClassifierCV(make_model(), method="sigmoid",
-                                        cv=list(GroupKFold(5).split(lab[features], y, groups))).fit(lab[features], y)
-    MODELS_DIR.mkdir(exist_ok=True)
-    joblib.dump(dict(ranker=ranker, calibrator=calibrator, features=features, screen_threshold=screen_cv,
-                     priority_share=PRIORITY_SHARE), MODELS_DIR / "risk_model_all.joblib")
+    platt = LogisticRegression(C=1e6).fit(logit(oof).reshape(-1, 1), y)
+    a, b = float(platt.coef_[0][0]), float(platt.intercept_[0])
+
+    def calibrate(p):
+        return 1 / (1 + np.exp(-(a * logit(p) + b)))
+
     imputer, scaler, linear = ranker
+    MODELS_DIR.mkdir(exist_ok=True)
+    joblib.dump(dict(ranker=ranker, platt=(a, b), features=features, screen_threshold=screen_cv,
+                     priority_share=PRIORITY_SHARE), MODELS_DIR / "risk_model_all.joblib")
+    (MODELS_DIR / "risk_model_all.json").write_text(json.dumps(dict(
+        features=features, impute_median=imputer.statistics_.round(6).tolist(),
+        mean=scaler.mean_.round(6).tolist(), scale=scaler.scale_.round(6).tolist(),
+        coef=linear.coef_[0].round(6).tolist(), intercept=round(float(linear.intercept_[0]), 6),
+        platt=dict(a=round(a, 6), b=round(b, 6)), screen_threshold=round(screen_cv, 6), priority_share=PRIORITY_SHARE,
+        formula=("x = features, missing values replaced by impute_median; z = (x - mean) / scale; "
+                 "rank_score = sigmoid(intercept + coef · z); probability = sigmoid(platt.a * logit(rank_score) + platt.b); "
+                 "screen_flag = rank_score >= screen_threshold; priority_flag = rank_score in the year's top priority_share")),
+        ensure_ascii=False, indent=2), encoding="utf-8")
     report["coefficients"] = {f: round(float(c), 3) for f, c in
                               sorted(zip(features, linear.coef_[0]), key=lambda fc: -abs(fc[1]))}
 
@@ -123,7 +142,7 @@ def main():
     top = np.argsort(-contrib, axis=1)[:, :3]  # the factors pushing risk up the most
     scores = latest[["group", "inst", "period"]].assign(
         predicts_year=latest["period"] + 1,
-        risk_probability=calibrator.predict_proba(latest[features])[:, 1].round(4),
+        risk_probability=calibrate(score).round(4),
         percentile=pd.Series(score).rank(pct=True).round(3),
         screen_flag=score >= screen_cv,
         priority_flag=top_share(score, latest["period"], PRIORITY_SHARE),

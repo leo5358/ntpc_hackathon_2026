@@ -62,7 +62,7 @@
 - 模型比較：邏輯迴歸 vs XGBoost 深度 1–4，選擇交叉驗證 AUC 最高者；平手時選較小的模型。
 - 跨機構驗證：`StratifiedGroupKFold` 5 折 × 5 次重複，同一間園不會同時出現在訓練與測試；95% 信賴區間以「園所」為單位 bootstrap 1,000 次。
 - 時間外推：2018–2022 訓練、2023–2024 測試；篩檢門檻只用訓練年的交叉驗證分數決定。
-- 機率校正：sigmoid 校正（以園所分組的 5 折），使顯示的風險機率與實際裁罰率一致（最新一年平均 8.9%）。
+- 機率校正：以交叉驗證的 out-of-fold 分數擬合 Platt 校正（單一條 sigmoid），使顯示的風險機率與實際裁罰率一致，且可寫成公式移植。
 
 ## 4. 最後 AUC
 
@@ -102,6 +102,20 @@ python -m pipeline.s6_validate        # 驗證、訓練、輸出最新一年風�
 - 用 `screen_flag` 確保不漏：它等同廣泛篩檢，後續需要第二層（LLM）縮小名單。
 - 第二層 LLM 要能縮小名單，必須讀到模型沒有的資訊，例如市府的陳情、稽查紀錄文字；只讀現有分數無法提升精準度。
 - 不適用於公共化園之間的排序：公共化園被罰件數太少（非營利 16、公立 21），模型在其內部沒有可靠訊號。
+
+### 移植與整合
+
+最終模型只用裁罰紀錄與名冊，**不需要 OCR、也不需要財報**。
+
+| 情境 | 做法 |
+| --- | --- |
+| 網站 / API（建議） | 不必載入模型：定期執行 `s6_validate`，把 `ml/data/processed/risk_scores_latest.csv` 放到私有 S3，API 直接讀取 |
+| 其他 Python 服務 | `joblib.load("ml/models/risk_model_all.joblib")`：`ranker` 算分、`platt` 轉機率、`screen_threshold` / `priority_share` 決定旗標；需與訓練時相同的 scikit-learn 版本 |
+| 非 Python 環境（JS、Java、SQL…） | 讀 `ml/models/risk_model_all.json`：參數與 `formula` 欄位的公式，幾行程式即可重現，不受套件版本影響 |
+| 換一台機器重建 | `s3_penalties → s4b_features_all → s6_validate`，幾分鐘完成 |
+| SageMaker | `--sagemaker` 目前只支援 XGBoost，而最終選的是邏輯迴歸。要在 SageMaker 上訓練，可改用效果相同的 XGBoost 深度 2（AUC 0.685），或用 SageMaker 的 scikit-learn 容器。尚未實測 |
+
+授權：模型檔與分數檔都由第三方資料衍生，只在團隊內部或私有 S3 流通，不放公開 repo（見 `NOTICE.md`）。
 
 ## 資料夠不夠、有沒有混合財報與輿情
 
