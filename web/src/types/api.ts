@@ -1,8 +1,10 @@
 export interface HealthResponse {
   status: string;
   freshness: string;
-  parser_verified_rate: number;
-  opinion_coverage: number;
+  /** null 代表尚未量測，報告須標示為「未量測」而非填入數字 */
+  parser_verified_rate: number | null;
+  parser_verified_scope: string | null;
+  opinion_coverage: number | null;
   version: string;
 }
 

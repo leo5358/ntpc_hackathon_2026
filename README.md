@@ -26,20 +26,17 @@ flowchart TD
         A3["社群與新聞輿情 (PTT / Dcard / News)"]
     end
 
-    subgraph Pipeline["資料萃取與特徵工程 (Pipeline)"]
-        B1["座標式 PDF 抽取 (pypdf)"]
-        B2["裁罰、收費與名冊清洗 (s3_external)"]
-        B3["情感與議題分類 (Bedrock + Comprehend)"]
-        B4["特徵矩陣計算 (財務偏差、本福特、流動率)"]
+    subgraph Pipeline["資料萃取與特徵工程 (ml/pipeline)"]
+        B1["決算書 PDF/OCR 抽取 (s1_city / s2_nonprofit，僅供 60 園解釋性參考)"]
+        B2["裁罰與名冊清洗 (s3_penalties)"]
+        B3["全新北訓練表 (s4b_features_all：裁罰史 + 名冊屬性)"]
+        B4["情感與議題分類 (輿情，僅供解釋性參考，未進最終模型)"]
     end
 
-    subgraph Modeling["風險評估模型 (Stage 5)"]
-        C1["XGBoost 裁罰預測機率 (45%)"]
-        C2["預決算殘差常態化偏差 (20%)"]
-        C3["Isolation Forest 異常度 (15%)"]
-        C4["輿情風險指數 (10%)"]
-        C5["規則與本福特旗標 (10%)"]
-        C6["綜合評分引擎 (Composite Risk Score)"]
+    subgraph Modeling["風險評估模型 (s5_train / s6_validate)"]
+        C1["邏輯迴歸：裁罰機率預測 (交叉驗證 AUC 0.688)"]
+        C2["Platt 機率校正"]
+        C3["screen_flag／priority_flag 雙門檻輸出"]
     end
 
     subgraph Serving["後端服務 (Backend Infra)"]
@@ -63,17 +60,26 @@ flowchart TD
 
 ---
 
-## 綜合風險評分模型
+## 風險評分模型
 
-綜合風險指數以 0–100 分量化呈現，並落實於 `config.yaml` 權重配置：
+> 本節反映 `ml/docs/MODEL_REPORT.md` 的實測結論，與最初設計的多因子加權構想不同——請見下方「與原始設計的差異」。
 
-$$\text{Risk Score} = 100 \times \Big( 0.45 \cdot P_{\text{penalty}} + 0.20 \cdot \text{Norm}(Z_{\text{residual}}) + 0.15 \cdot \text{Score}_{\text{iso}} + 0.10 \cdot \text{Risk}_{\text{opinion}} + 0.10 \cdot \sum W_{\text{flag}} \Big)$$
+最終上線模型是**邏輯迴歸**，只用「裁罰歷史 + 名冊屬性」10 個特徵（過去裁罰次數、當年是否被罰、距上次裁罰年數、核定人數、月費、立案年數、私立、非營利、延長照顧、準公共化），預測園所下一學年度被裁罰的機率，再以 Platt scaling 校正為實際機率：
 
-- **$P_{\text{penalty}}$ (45%)**：XGBoost 監督式模型預測未來學年度裁罰機率。
-- **$Z_{\text{residual}}$ (20%)**：決算數相對於預算數與同儕規模的統計偏離度。
-- **$\text{Score}_{\text{iso}}$ (15%)**：針對無裁罰歷史機構（如市立園）之無監督孤立森林異常指標。
-- **$\text{Risk}_{\text{opinion}}$ (10%)**：外部社群在餐食衛生、不當管教、收費爭議等 6 大面向之情感風險，具備明確「無輿情資料」揭露。
-- **$\sum W_{\text{flag}}$ (10%)**：本福特定律異常、用人費用嚴重不足、受託營運單位頻繁更換等專業查核旗標。
+- **交叉驗證 AUC 0.688**（95% CI 0.666–0.707），時間外推（2023–2024 測試）AUC 0.640。
+- 輸出兩種門檻：`priority_flag`（每年前 10% 優先稽查，precision 約為隨機的 2.2 倍）與 `screen_flag`（召回 90% 的廣泛篩檢名單）。
+- 訓練與推論程式：[`ml/pipeline/s5_train.py`](ml/pipeline/s5_train.py)、[`ml/pipeline/s6_validate.py`](ml/pipeline/s6_validate.py)，產出 [`ml/data/processed/risk_scores_latest.csv`](ml/USAGE.md)（不隨 repo 散佈，需在本機重跑產生）。
+
+### 與原始設計的差異
+
+專案初期規劃了一套 5 因子加權的「綜合風險指數」（裁罰機率 45% + 預決算殘差 20% + Isolation Forest 異常度 15% + 輿情風險 10% + 規則旗標 10%，仍保留於 `config.yaml` 的 `model.weights` 與 `api/services/report_builder.py` 供 API/前端展示欄位使用）。但實測後：
+
+- **財報殘差**：60 間公共化園的決算書逐列 OCR 解析後，與隔年裁罰**無統計關聯**（AUC 0.44–0.49），假設不成立，故未納入最終模型。
+- **輿情風險**：新聞、PTT、Dcard 等公開/合規來源幾乎不點名園所（AUC 0.50–0.51，等同隨機），且多數社群平台條款不允許爬取，資料量不足以支撐模型。
+- **雙模型加權實驗**：財報+輿情模型與裁罰史模型以第二層模型學權重，混合後**沒有提升**，因此最終模型排除財報與輿情訊號。
+- 目前 API 回傳的 `residual`、`isolation_forest` 欄位（[`api/services/institution_store.py`](api/services/institution_store.py)）在動態資料來源下是以 `risk_probability` 的固定比例換算的展示用途值，並非獨立計算的殘差或孤立森林分數。
+
+詳細方法論、資料規模與混淆矩陣見 [`ml/docs/MODEL_REPORT.md`](ml/docs/MODEL_REPORT.md)。
 
 ---
 
@@ -93,9 +99,18 @@ $$\text{Risk Score} = 100 \times \Big( 0.45 \cdot P_{\text{penalty}} + 0.20 \cdo
 │   ├── config.py             # 設定檔讀取介面
 │   ├── schemas.py            # Pydantic 資料契約與型別規範
 │   └── routes/               # API 路由模組 (health, institutions, rankings...)
-├── pipeline/                 # 資料解析、特徵工程與機器學習 (骨架)
-│   ├── common/               # PDF 表格萃取、民國學年轉換、會計科目 mapping
-│   └── nlp/                  # 輿情擷取、實體對齊與議題極性分類
+├── pipeline/                 # API 直接呼叫的輿情爬蟲模組
+│   ├── common/               # (骨架，目前為空)
+│   └── nlp/                  # 輿情擷取、實體對齊與議題極性分類 (Bedrock)
+├── ml/                       # 風險預測模型：資料清洗、特徵工程、訓練與驗證
+│   ├── pipeline/
+│   │   ├── common/           # PDF/OCR 抽取、民國學年轉換、名冊與詞彙表 (roc.py, ocr.py, roster.py)
+│   │   ├── nlp/               # 輿情蒐集與分類訓練 (僅供解釋性參考)
+│   │   ├── s1_city.py ~ s4b_features_all.py  # 財報解析與特徵表建置
+│   │   └── s5_train.py, s6_validate.py       # 模型訓練、交叉驗證、產出風險分數
+│   ├── data/                 # 原始/處理後資料與標籤 (git-ignored，需本機產生)
+│   ├── docs/MODEL_REPORT.md  # 模型方法論、AUC 與資料充足度分析
+│   └── USAGE.md              # 重跑模型與整合到 API 的操作說明
 └── web/                      # 前端單頁應用 (React + Vite + Tailwind + TypeScript)
     ├── src/
     │   ├── App.tsx           # 路由配置與導航
@@ -335,7 +350,9 @@ curl -X POST "http://localhost:8000/api/report/city/narrative" \
 
 ### 資料源
 
-14 園評分資料集中於 `web/src/data/institutions.ts`（風險地圖與綜整報告共用），統計計算集中於 `web/src/services/cityReport.ts`。待 Stage 5 分數落地後，改由 `/api/institutions` 取得即可，頁面無需改寫。
+14 園精選展示資料集中於 `web/src/data/institutions.ts`（風險地圖與綜整報告共用），統計計算集中於 `web/src/services/cityReport.ts`。
+
+動態載入全新北 1,211～1,218 園的整合已完成（[`api/services/institution_store.py`](api/services/institution_store.py)），會在偵測到 `ml/data/processed/risk_scores_latest.csv` 與 preschools 快取存在時自動切換為完整資料集並改由 `/api/institutions` 提供；本機若未先依 [`ml/USAGE.md`](ml/USAGE.md) 產生該 CSV，則自動退回 14 園展示資料，頁面邏輯無需改寫。
 
 ---
 

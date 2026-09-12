@@ -31,6 +31,22 @@ const INK = {
 
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
+/** 未量測的指標一律顯示「未量測」，不以 0% 或占位數字充數 */
+const pctOrUnmeasured = (n: number | null | undefined) => (n == null ? "未量測" : pct(n));
+
+/**
+ * 模型驗證數字的單一事實來源：ml/docs/MODEL_REPORT.md（由 `python -m pipeline.s6_validate` 產生，
+ * 對應 ml/models/validation_all.json）。此處若要改動，必須先重跑驗證並同步該報告。
+ */
+const MODEL_VALIDATION = {
+  crossValidationAuc: "0.688",
+  crossValidationCi: "95% CI 0.666–0.707",
+  forwardAuc: "0.640",
+  forwardWindow: "2018–2022 訓練 → 2023–2024 測試",
+  priorityPrecision: "19.7%",
+  priorityShare: "每年前 10%，約為隨機的 2.2 倍",
+} as const;
+
 /* ---------------------------------------------------------
  * 圖表元件：不引入圖表套件，純 div 量值條，列印不破版
  * ------------------------------------------------------- */
@@ -224,8 +240,8 @@ export const CityRiskReportPage: React.FC = () => {
         })),
         top_flags: stats.flagCategories.flatMap((c) => c.flags).slice(0, 8),
         high_risk_institutions: stats.highRisk.map((h) => h.school.name),
-        opinion_coverage: health?.opinion_coverage,
-        parser_verified_rate: health?.parser_verified_rate,
+        opinion_coverage: health?.opinion_coverage ?? undefined,
+        parser_verified_rate: health?.parser_verified_rate ?? undefined,
         use_bedrock: useBedrock,
       };
       setNarrative(await api.postCityNarrative(payload));
@@ -454,24 +470,28 @@ export const CityRiskReportPage: React.FC = () => {
           <h2 className="text-base font-bold text-slate-900">貳、評估範圍與資料可信度</h2>
           <p className="text-xs text-slate-600 leading-relaxed">
             本報告資料來源包含地方教育發展基金決算書、全國教保資訊網裁罰與名冊鏡像資料，以及公開新聞與社群輿情。
-            風險分數為 0–100 分之相對指標，依綜合評分公式加權計算（裁罰預測 45%、預決算殘差 20%、
-            孤立森林異常 15%、輿情風險 10%、規則旗標 10%）。
+            風險分數為 0–100 分之相對指標；最終上線模型以裁罰歷史與園所名冊屬性預測隔年受裁罰機率，
+            預決算殘差與輿情訊號經實測後與隔年裁罰無顯著關聯，未納入最終評分（詳見捌章）。
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="border border-slate-200 rounded-lg p-3">
-              <div className="text-xs text-slate-500">PDF 解析驗證率</div>
+              <div className="text-xs text-slate-500">決算書解析驗算通過率</div>
               <div className="text-lg font-bold text-slate-900 tabular-nums">
-                {health ? pct(health.parser_verified_rate) : "—"}
+                {pctOrUnmeasured(health?.parser_verified_rate)}
               </div>
-              <div className="text-[11px] text-slate-500">決算數字與原表自動對帳</div>
+              <div className="text-[11px] text-slate-500">
+                {health?.parser_verified_scope ?? "尚未取得量測結果"}
+              </div>
             </div>
             <div className="border border-slate-200 rounded-lg p-3">
               <div className="text-xs text-slate-500">輿情資料涵蓋率</div>
               <div className="text-lg font-bold text-amber-600 tabular-nums">
-                {health ? pct(health.opinion_coverage) : "—"}
+                {pctOrUnmeasured(health?.opinion_coverage)}
               </div>
               <div className="text-[11px] text-amber-700">
-                涵蓋率偏低，無輿情不等於無風險
+                {health?.opinion_coverage == null
+                  ? "尚未建立全市涵蓋率量測；無輿情不等於無風險"
+                  : "涵蓋率偏低，無輿情不等於無風險"}
               </div>
             </div>
             <div className="border border-slate-200 rounded-lg p-3">
@@ -668,25 +688,46 @@ export const CityRiskReportPage: React.FC = () => {
         <section className="space-y-3 break-inside-avoid">
           <h2 className="text-base font-bold text-slate-900">捌、模型方法論與使用限制</h2>
           <div className="bg-slate-900 text-slate-100 p-3 rounded-lg font-mono text-[11px] overflow-x-auto">
-            risk = 100 * (0.45 * p_penalty + 0.20 * norm(residual_z) + 0.15 * iso_score + 0.10 * opinion_risk +
-            0.10 * flag_weight_sum)
+            rank = sigmoid(intercept + Σ coef_i * z_i)　　risk_probability = sigmoid(a * logit(rank) + b)
+            <span className="block text-slate-400">
+              特徵：過去裁罰次數、當年是否被罰、距上次裁罰年數、核定人數、月費、立案年數、私立、非營利、延長照顧、準公共化
+            </span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
-              { label: "裁罰預測 AUC (Grouped CV)", value: "0.82 ± 0.06" },
-              { label: "輿情分類 Macro-F1 (Gold Set)", value: "0.78" },
-              { label: "Parser 驗證率", value: health ? pct(health.parser_verified_rate) : "> 95%" },
+              {
+                label: "跨機構交叉驗證 AUC",
+                value: MODEL_VALIDATION.crossValidationAuc,
+                note: MODEL_VALIDATION.crossValidationCi,
+              },
+              {
+                label: "時間外推 AUC",
+                value: MODEL_VALIDATION.forwardAuc,
+                note: MODEL_VALIDATION.forwardWindow,
+              },
+              {
+                label: "優先稽查名單精準率",
+                value: MODEL_VALIDATION.priorityPrecision,
+                note: MODEL_VALIDATION.priorityShare,
+              },
             ].map((m) => (
               <div key={m.label} className="border border-slate-200 rounded-lg p-3 text-center">
                 <div className="text-[11px] text-slate-500">{m.label}</div>
                 <div className="text-lg font-bold text-slate-900 tabular-nums">{m.value}</div>
+                <div className="text-[10px] text-slate-500">{m.note}</div>
               </div>
             ))}
           </div>
+          <p className="text-[11px] text-slate-500">
+            上列數字由 <span className="font-mono">python -m pipeline.s6_validate</span> 產生，
+            出處為 ml/docs/MODEL_REPORT.md；決算書解析驗算通過率見貳章。
+          </p>
           <p className="text-xs text-slate-600 leading-relaxed">
             本報告輸出之風險分數為異常指標與資源優先分配輔助依據，非行政裁決或違法事實之認定；
             所有高風險預警項目均須經稽查人員比對原始財務單據與現場查核後方能定案。
             風險等級級距與處理策略引用教育部風險管理推動作業原則附件二、附件三、附件四與附件七格式。
+            使用限制：上列 AUC 為全新北各類型園所之整體表現，公共化園（非營利、市立）受裁罰件數過少，
+            模型在該群組內部的排序尚無可靠訊號，本報告之公共化園排序僅供查核排程參考，不應據以比較優劣。
             {narrative?.generated_by === "bedrock" &&
               "本報告執行摘要與建議由 AWS Bedrock Claude 依前述統計數字生成，內容須經承辦人員複核後方可對外引用。"}
           </p>

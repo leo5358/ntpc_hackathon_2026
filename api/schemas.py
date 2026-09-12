@@ -9,8 +9,15 @@ from pydantic import BaseModel, Field
 class HealthResponse(BaseModel):
     status: str = Field(default="ok", description="Service status")
     freshness: str = Field(default="unknown", description="Last data update timestamp")
-    parser_verified_rate: float = Field(default=0.0, description="PDF parse verification rate, target >0.95")
-    opinion_coverage: float = Field(default=0.0, description="Proportion of schools with opinion data")
+    parser_verified_rate: Optional[float] = Field(
+        default=None, description="決算書解析逐列驗算通過率；None 代表尚未量測"
+    )
+    parser_verified_scope: Optional[str] = Field(
+        default=None, description="parser_verified_rate 的量測口徑，供報告標註來源"
+    )
+    opinion_coverage: Optional[float] = Field(
+        default=None, description="有輿情資料之園所占比；None 代表尚未量測"
+    )
     version: str = Field(default="0.1.0", description="API version")
 
 
