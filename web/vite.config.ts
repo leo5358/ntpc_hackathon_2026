@@ -9,10 +9,11 @@ export default defineConfig({
       name: "ignore-devtools-sourcemap",
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          // Intercept browser extension injected source maps (e.g. installHook.js.map)
+          // Gracefully serve valid empty source map for extension injected scripts
           if (req.url && req.url.includes(".map") && !req.url.startsWith("/@fs/")) {
-            res.statusCode = 404;
-            res.end();
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ version: 3, file: "", sources: [], mappings: "" }));
             return;
           }
           next();
