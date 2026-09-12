@@ -23,6 +23,17 @@ model:
     - 市立幼兒園
     - 非營利園
 
+security:
+  # 對外開放連線的 IP 白名單。
+  # 後端：寫入 API Gateway resource policy（非清單來源一律 Deny）
+  # 前端：寫入 WAF IPSet 並掛在 CloudFront distribution 上
+  # 留空則不設限制（僅建議用於本機測試）
+  allowed_ips:
+    - 60.250.71.45/32
+    - 61.222.117.53/32
+    - 59.125.121.41/32
+    - 60.250.71.43/32
+
 api:
   host: "0.0.0.0"
   port: 8000

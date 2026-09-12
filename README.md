@@ -339,4 +339,83 @@ curl -X POST "http://localhost:8000/api/report/city/narrative" \
 
 ---
 
+## 部署與 CI/CD
+
+### 架構
+
+| 層 | 服務 | 資源名稱（stage=dev） | 存取控制 |
+| --- | --- | --- | --- |
+| 後端 | Lambda（python3.12 + Mangum） | `smart-watchdog-api-dev` | 僅由 API Gateway 叫用 |
+| 後端出口 | API Gateway REST API | `smart-watchdog-api-dev` | resource policy IP 白名單 |
+| 前端 | S3（私有）+ CloudFront + OAC | `smart-watchdog-web-dev-<account>` | WAF IPSet 白名單，預設 Block |
+
+> **為何不用 Lambda Function URL**：本專案使用的 AWS Workshop 帳號在服務層阻擋 Function URL，
+> 即使 resource policy 正確、AuthType 設為 NONE 或 AWS_IAM 皆回 403（sigv4 簽章請求同樣被擋）。
+> 改用 REST API 另有好處：resource policy 原生支援 `aws:SourceIp` 白名單。
+
+### IP 白名單
+
+對外開放的來源 IP 集中設定於 [`config.yaml`](config.yaml)，後端與前端共用同一份清單：
+
+```yaml
+security:
+  allowed_ips:
+    - 60.250.71.45/32
+    - 61.222.117.53/32
+    - 59.125.121.41/32
+    - 60.250.71.43/32
+```
+
+改動後重跑部署即可生效（後端會重新部署 stage，前端會更新 WAF IPSet）。清單留空代表不設限制。
+
+### 手動部署
+
+```bash
+make deploy                     # 後端 -> 驗證 -> 前端，一次完成
+make deploy-api                 # 只部後端，URL 會寫入 .api_url
+make deploy-web                 # 只部前端（讀取 .api_url 作為 API 位址）
+make verify-deploy              # 直接叫用 Lambda 驗證，不經公開網路
+make smoke-backend              # 離線端點測試，不需 AWS 憑證
+make deploy STAGE=prod          # 換 stage
+```
+
+所有腳本皆為 create-or-update，重複執行安全。後端打包使用
+[`requirements-lambda.txt`](requirements-lambda.txt)（排除 uvicorn、boto3 與 pandas），
+以 manylinux wheel 產生約 4.4MB 的部署包。
+
+### GitHub Actions
+
+| Workflow | 觸發時機 | 內容 |
+| --- | --- | --- |
+| [`ci.yml`](.github/workflows/ci.yml) | 所有 push 與 PR | 前端 tsc + build、Lambda 相依解析、後端匯入、端點煙霧測試、合併衝突標記掃描。**完全不需 AWS 憑證** |
+| [`deploy.yml`](.github/workflows/deploy.yml) | push 到 `main`、手動觸發 | 部署後端 → 直接叫用 Lambda 驗證 → 部署前端，並在 job summary 列出兩個網址 |
+
+需要在 repo 設定以下 secrets（Settings → Secrets and variables → Actions）：
+
+| Secret | 說明 |
+| --- | --- |
+| `AWS_ACCESS_KEY_ID` | AWS 存取金鑰 |
+| `AWS_SECRET_ACCESS_KEY` | AWS 私密金鑰 |
+| `AWS_SESSION_TOKEN` | 臨時憑證才需要（Workshop 帳號屬此類） |
+
+兩點設計說明：
+
+- **缺少 secrets 時 deploy 會跳過而非失敗**。Workshop 帳號的憑證會過期、帳號也會被回收，
+  硬失敗只會讓 pipeline 長期紅燈、掩蓋真正的問題。
+- **部署後驗證不打公開網址**，改以 `lambda:Invoke` 送出合成的 API Gateway 事件
+  （[`infra/verify_deploy.py`](infra/verify_deploy.py)）。因為 GitHub runner 的 IP 不在白名單內，
+  直接 curl 公開端點必然 403。
+
+### 前端如何取得 API 位址
+
+`web/src/services/api.ts` 以 `import.meta.env.VITE_API_BASE_URL ?? "/api"` 決定 API base：
+本機開發走 Vite proxy 的相對路徑，部署時由 `infra/deploy_web.py` 在建置前寫入
+`web/.env.production.local`（建置後立即刪除）。
+
+> Vite 只從 `.env` 檔載入 `VITE_*` 變數，單純 `export` 環境變數**不會**進入 `import.meta.env`
+> （Vite 5.4 實測）。因此部署腳本改用寫檔方式，並於建置後檢查產物確實含有該位址，
+> 避免靜默部署出一份打不到後端的前端。
+
+---
+
 ## ⚠️ 免責與使用限制聲明

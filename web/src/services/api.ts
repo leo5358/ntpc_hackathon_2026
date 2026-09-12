@@ -14,7 +14,9 @@ import {
   CityNarrativeResponse,
 } from "../types/api";
 
-const BASE_URL = "/api";
+// 本機開發走 vite proxy 的相對路徑；部署到 S3/CloudFront 時由建置期的
+// VITE_API_BASE_URL 指向 Lambda Function URL（infra/deploy_web.py 會注入）
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 async function fetchJson<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${endpoint}`, options);

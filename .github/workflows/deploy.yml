@@ -1,0 +1,103 @@
+name: Deploy to AWS
+
+# push 到 main 即自動部署後端（Lambda + API Gateway）與前端（S3 + CloudFront）
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 部署階段
+        required: true
+        default: dev
+        type: choice
+        options: [dev, staging, prod]
+
+concurrency:
+  group: deploy-${{ github.event.inputs.stage || 'dev' }}
+  cancel-in-progress: false
+
+env:
+  STAGE: ${{ github.event.inputs.stage || 'dev' }}
+  AWS_REGION: us-west-2
+
+jobs:
+  deploy:
+    name: 部署後端與前端
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 本專案使用的是 AWS Workshop 臨時帳號，憑證會過期、帳號也會被回收。
+      # 缺少 secrets 時直接跳過部署而非讓 workflow 紅燈，避免掩蓋真正的失敗。
+      - name: 檢查 AWS 憑證是否存在
+        id: creds
+        env:
+          KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        run: |
+          if [ -z "$KEY_ID" ]; then
+            echo "has_creds=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::未設定 AWS_ACCESS_KEY_ID，略過部署（僅執行建置驗證）"
+          else
+            echo "has_creds=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安裝相依
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          cd web && npm ci
+
+      - name: 設定 AWS 憑證
+        if: steps.creds.outputs.has_creds == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 部署後端（Lambda + API Gateway）
+        id: api
+        if: steps.creds.outputs.has_creds == 'true'
+        env:
+          BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID || 'us.anthropic.claude-haiku-4-5-20251001-v1:0' }}
+        run: python -m infra.deploy_api --stage "$STAGE"
+
+      - name: 驗證後端（直接叫用 Lambda，繞過 IP 白名單）
+        if: steps.creds.outputs.has_creds == 'true'
+        run: python -m infra.verify_deploy --stage "$STAGE"
+
+      - name: 部署前端（S3 + CloudFront + WAF IP 白名單）
+        id: web
+        if: steps.creds.outputs.has_creds == 'true'
+        run: python -m infra.deploy_web --stage "$STAGE" --api-url "${{ steps.api.outputs.api_url }}"
+
+      - name: 僅建置（無憑證時）
+        if: steps.creds.outputs.has_creds != 'true'
+        run: cd web && npm run build
+
+      - name: 部署摘要
+        if: steps.creds.outputs.has_creds == 'true'
+        run: |
+          {
+            echo "### 部署完成（stage: $STAGE）"
+            echo ""
+            echo "| 項目 | 位址 |"
+            echo "| --- | --- |"
+            echo "| 後端 API | ${{ steps.api.outputs.api_url }} |"
+            echo "| 前端網站 | ${{ steps.web.outputs.web_url }} |"
+            echo ""
+            echo "兩者皆限定 \`config.yaml\` 的 \`security.allowed_ips\` 清單內的來源 IP 才能存取。"
+          } >> "$GITHUB_STEP_SUMMARY"

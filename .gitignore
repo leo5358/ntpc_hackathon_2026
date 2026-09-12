@@ -33,3 +33,9 @@ data/scores/
 
 # Plans & Documentation drafts
 *plan*.md
+
+# 部署腳本輸出的 API URL
+.api_url
+
+# 部署時暫時寫入的前端建置變數（deploy_web.py 會自行刪除）
+web/.env.production.local

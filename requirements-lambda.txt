@@ -1,0 +1,15 @@
+# Lambda 執行期相依（僅 api/ 與 pipeline/ 實際 import 到的套件）
+#
+# 刻意排除：
+#   uvicorn        - 本機開發用，Lambda 由 Mangum 接手
+#   boto3/botocore - Lambda python3.12 runtime 已內建，省下約 50MB 解壓體積
+#   pandas/pyarrow - api/ 與 pipeline/ 完全沒有 import（只有 ml/ 用得到）
+#
+# 完整開發環境請用 requirements.txt。
+fastapi>=0.110.0
+mangum>=0.17.0
+pydantic>=2.6.0
+pyyaml>=6.0.1
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+python-dotenv>=1.0.1
