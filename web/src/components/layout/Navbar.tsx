@@ -1,12 +1,13 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ShieldCheck, BarChart3, Sliders, BookOpen } from "lucide-react";
+import { ShieldCheck, BarChart3, Sliders, BookOpen, MapPin } from "lucide-react";
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
 
   const navItems = [
     { path: "/", label: "風險排行", icon: BarChart3 },
+    { path: "/map", label: "風險地圖", icon: MapPin },
     { path: "/sandbox", label: "權重沙盒", icon: Sliders },
     { path: "/method", label: "模型方法論", icon: BookOpen },
   ];

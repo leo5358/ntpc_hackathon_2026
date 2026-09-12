@@ -13,6 +13,9 @@ export interface InstitutionListItem {
   latest_score?: number;
   penalty_count: number;
   risk_level?: "low" | "medium" | "high";
+  latitude?: number;
+  longitude?: number;
+  address?: string;
 }
 
 export interface ShapContribution {

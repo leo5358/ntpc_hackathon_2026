@@ -24,6 +24,9 @@ class InstitutionListItem(BaseModel):
     latest_score: Optional[float] = Field(None, description="Composite risk score 0..100")
     penalty_count: int = Field(default=0, description="Total historical penalty count")
     risk_level: Optional[str] = Field(None, description="Low, Medium, High risk indicator")
+    latitude: Optional[float] = Field(None, description="Latitude from preschools.json")
+    longitude: Optional[float] = Field(None, description="Longitude from preschools.json")
+    address: Optional[str] = Field(None, description="Institution address")
 
 
 class ShapContribution(BaseModel):
