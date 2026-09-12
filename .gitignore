@@ -30,6 +30,8 @@ data/curated/
 data/scores/
 *.parquet
 *.csv
+dataset.zip
+*.zip
 
 # Plans & Documentation drafts
 *plan*.md
