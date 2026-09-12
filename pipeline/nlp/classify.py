@@ -108,13 +108,22 @@ class BedrockOpinionClassifier:
 6. 行政與立案
 7. 無特定風險/一般討論
 
+【評分指標方向說明（極為重要，切勿混淆方向）】：
+1. sentiment_polarity（情緒極性）：
+   - 數值範圍：-1.0 到 +1.0。
+   - -1.0 代表極度負面抱怨、指控、投訴；0.0 為中性客觀客觀陳述；+1.0 代表正面推薦、讚賞。
+2. severity_score（嚴重危害程度）：
+   - 數值範圍：0.0 到 1.0，嚴禁輸出負數！
+   - 注意：數值越高代表違規越嚴重、對幼兒身心危害越大、風險越高！
+   - 0.0 代表完全無危害（常態或正面）；0.2~0.4 代表輕微紛爭或行政小瑕疵；0.5~0.7 代表明確違規爭議（如超收、師生比失衡）；0.8~1.0 代表重大危害違法（如虐童體罰、重大食安、未立案經營）。
+
 你必須只輸出一個標準的 JSON 格式物件，請勿輸出任何其他 Markdown 引導字串或說明：
 {{
   "is_risk_relevant": true 或 false (若為負面風險指控或爭議為 true),
   "primary_topic": "上述 7 個類別之一",
   "topic_confidence": 0.0 到 1.0 的小數,
-  "sentiment_polarity": -1.0 (極度負面抱怨/控訴) 到 1.0 (極度正面推薦/讚揚) 之間的數值,
-  "severity_score": 0.0 (無危害) 到 1.0 (嚴重重大違規) 之間的數值,
+  "sentiment_polarity": -1.0 到 1.0 之間的數值,
+  "severity_score": 0.0 到 1.0 之間的數值（越高越危險，切勿小於0）,
   "summary_zh": "繁體中文重點摘要（30字內）",
   "matched_keywords": ["關鍵詞1", "關鍵詞2"]
 }}
@@ -153,13 +162,19 @@ class BedrockOpinionClassifier:
                     output_text = output_text.split("```")[1].split("```")[0].strip()
 
                 parsed = json.loads(output_text)
+                raw_polarity = float(parsed.get("sentiment_polarity", 0.0))
+                raw_severity = float(parsed.get("severity_score", 0.0))
+                # 防呆：防止模型誤將負向情緒帶入 severity_score 造成負數，且確保範圍在 [0.0, 1.0]
+                safe_severity = max(0.0, min(1.0, abs(raw_severity)))
+                safe_polarity = max(-1.0, min(1.0, raw_polarity))
+
                 return ClassificationResult(
                     doc_id=doc_id,
                     is_risk_relevant=parsed.get("is_risk_relevant", False),
                     topic=parsed.get("primary_topic", "無特定風險/一般討論"),
                     topic_confidence=float(parsed.get("topic_confidence", 0.8)),
-                    polarity=float(parsed.get("sentiment_polarity", 0.0)),
-                    severity_score=float(parsed.get("severity_score", 0.0)),
+                    polarity=safe_polarity,
+                    severity_score=safe_severity,
                     summary_zh=parsed.get("summary_zh", snippet[:60]),
                     keywords=parsed.get("matched_keywords", []),
                     model_provider="aws_bedrock_claude",
