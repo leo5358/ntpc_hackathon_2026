@@ -37,7 +37,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DEFAULT_BEDROCK_MODEL = "anthropic.claude-3-haiku-20240307-v1:0"
+DEFAULT_BEDROCK_MODEL = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0")
 
 
 @dataclass

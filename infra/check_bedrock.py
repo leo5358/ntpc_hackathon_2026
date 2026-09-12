@@ -25,7 +25,7 @@ def run_diagnostics():
     aws_cfg = cfg.get("aws", {})
     region = os.getenv("AWS_DEFAULT_REGION") or os.getenv("AWS_REGION") or aws_cfg.get("region", "us-west-2")
     profile = os.getenv("AWS_PROFILE") or aws_cfg.get("profile_name", "workshop")
-    model_id = os.getenv("BEDROCK_MODEL_ID") or "anthropic.claude-3-haiku-20240307-v1:0"
+    model_id = os.getenv("BEDROCK_MODEL_ID") or "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
     print(f"📌 目標區域 (Region):  {region}")
     print(f"📌 目標模型 (Model):   {model_id}")
