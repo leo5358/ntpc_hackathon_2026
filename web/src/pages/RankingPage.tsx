@@ -1,4 +1,4 @@
-import { Download, Filter, Search, AlertTriangle, MapPin } from "lucide-react";
+import { FileText, Filter, Search, AlertTriangle, MapPin } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export const RankingPage: React.FC = () => {
@@ -20,13 +20,14 @@ export const RankingPage: React.FC = () => {
             <MapPin className="w-4 h-4" />
             <span>切換至地理風險地圖</span>
           </Link>
-          <button
-            disabled
-            className="inline-flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition cursor-not-allowed opacity-75"
+          <Link
+            to="/report/city"
+            className="inline-flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm"
+            title="產製全市風險評估綜整報告（含高風險機構專案報告），可列印或匯出 CSV"
           >
-            <Download className="w-4 h-4" />
-            <span>匯出稽查清單 (CSV)</span>
-          </button>
+            <FileText className="w-4 h-4" />
+            <span>產製綜整報告</span>
+          </Link>
         </div>
       </div>
 

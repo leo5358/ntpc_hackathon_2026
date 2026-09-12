@@ -152,3 +152,191 @@ export interface WhatIfResponse {
   weights_applied: WhatIfWeights;
   items: RescoredItem[];
 }
+
+/* ---------------------------------------------------------
+ * 風險評估及處理彙總表
+ * 對應「教育部風險管理推動作業原則」附件2、附件3、附件4、附件7
+ * ------------------------------------------------------- */
+
+/** 附件2：風險可能性評量標準表 */
+export interface LikelihoodScaleItem {
+  level: 1 | 2 | 3;
+  label: string;
+  description: string;
+}
+
+/** 附件2：風險影響程度評量標準表 */
+export interface ImpactScaleItem {
+  level: 1 | 2 | 3;
+  label: string;
+  image: string;
+  personnel: string;
+  protest: string;
+  property_loss: string;
+  government_operation: string;
+}
+
+/** 附件7 之「風險等級 + 風險值」欄組，判斷基準依附件3 */
+export interface RiskGrade {
+  likelihood: number;
+  likelihood_label: string;
+  impact: number;
+  impact_label: string;
+  risk_value: number;
+  risk_level: "低度風險" | "中度風險" | "高度風險" | "極度風險" | string;
+  color: string;
+  tolerable: boolean;
+  response: string;
+}
+
+export interface ReportEvidence {
+  kind: "shap" | "penalty" | "flag" | "opinion" | "account" | string;
+  label: string;
+  detail: string;
+  value?: any;
+  source_ref?: string;
+}
+
+/** 附件7「風險評估及處理彙總表」之一列 */
+export interface RiskAssessmentRow {
+  seq: number;
+  policy_goal: string;
+  key_project: string;
+  risk_item: string;
+  risk_scenario: string;
+  existing_control: string;
+  existing: RiskGrade;
+  additional_control: string;
+  residual: RiskGrade;
+  owner_unit: string;
+  evidence: ReportEvidence[];
+}
+
+/** 附件4 現有(殘餘)風險圖像格位 */
+export interface RiskMatrixCell {
+  likelihood: number;
+  impact: number;
+  risk_value: number;
+  risk_level: string;
+  color: string;
+  tolerable: boolean;
+  response: string;
+  row_seqs: number[];
+}
+
+export interface RiskReportMeta {
+  agency: string;
+  title: string;
+  roc_year: number;
+  academic_year: number;
+  inst_id: string;
+  inst_name: string;
+  peer_group: string;
+  operator?: string;
+  district?: string;
+  composite_score?: number;
+  generated_at: string;
+  model_version: string;
+  data_freshness?: string;
+  weights: Record<string, number>;
+  is_sample: boolean;
+}
+
+export interface RiskReportSummary {
+  total_items: number;
+  intolerable_count: number;
+  level_distribution: Record<string, number>;
+  max_risk_value: number;
+  residual_intolerable_count: number;
+}
+
+export interface RiskAssessmentReport {
+  meta: RiskReportMeta;
+  rows: RiskAssessmentRow[];
+  existing_matrix: RiskMatrixCell[];
+  residual_matrix: RiskMatrixCell[];
+  likelihood_scale: LikelihoodScaleItem[];
+  impact_scale: ImpactScaleItem[];
+  tolerance_threshold: number;
+  summary: RiskReportSummary;
+  disclaimer: string;
+  source_urls: string[];
+}
+
+export interface RiskScalesResponse {
+  likelihood_scale: LikelihoodScaleItem[];
+  impact_scale: ImpactScaleItem[];
+  tolerance_threshold: number;
+  matrix: RiskMatrixCell[];
+}
+
+/* 全市綜整報告：敘述文字生成 */
+
+export interface NarrativePeerGroupStat {
+  peer_group: string;
+  count: number;
+  average_score: number;
+  max_score: number;
+  penalty_count: number;
+}
+
+export interface NarrativeDistrictStat {
+  district: string;
+  count: number;
+  average_score: number;
+  max_score: number;
+}
+
+export interface CityNarrativeRequest {
+  roc_year?: number;
+  academic_year?: number;
+  total_institutions: number;
+  average_score: number;
+  high_risk_count: number;
+  medium_risk_count: number;
+  low_risk_count: number;
+  total_penalties: number;
+  peer_groups: NarrativePeerGroupStat[];
+  top_districts: NarrativeDistrictStat[];
+  top_flags?: string[];
+  high_risk_institutions?: string[];
+  opinion_coverage?: number;
+  parser_verified_rate?: number;
+  use_bedrock?: boolean;
+}
+
+export interface CityNarrativeResponse {
+  executive_summary: string;
+  key_findings: string[];
+  recommendations: string[];
+  /** bedrock 或 template，供前端標示文字來源 */
+  generated_by: "bedrock" | "template" | string;
+  model_id?: string | null;
+}
+
+/** 管線／模型輸出餵入報表產生器的單一風險訊號 */
+export interface ModelSignalInput {
+  code?: string;
+  /** 旗標文字；未給 code 時由後端對映為風險項目代碼 */
+  primary_flag?: string;
+  /** 0–100 綜合風險分數；給定時優先用於換算可能性(L) */
+  composite_score?: number;
+  p_penalty?: number;
+  severity?: number;
+  penalty_count?: number;
+  detail?: string;
+  evidence?: ReportEvidence[];
+}
+
+export interface RiskReportBuildRequest {
+  inst_id: string;
+  inst_name: string;
+  peer_group?: string;
+  operator?: string;
+  district?: string;
+  academic_year?: number;
+  roc_year?: number;
+  composite_score?: number;
+  signals: ModelSignalInput[];
+  source_urls?: string[];
+}

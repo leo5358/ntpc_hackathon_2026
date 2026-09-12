@@ -36,6 +36,13 @@ export const InstitutionDetailPage: React.FC = () => {
             <span className="text-xs text-slate-500 uppercase tracking-wider block">綜合風險評分</span>
             <span className="text-3xl font-extrabold text-blue-600">--</span>
           </div>
+          <Link
+            to={`/report/${id || ""}`}
+            className="inline-flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm"
+          >
+            <FileText className="w-4 h-4" />
+            <span>產製風險彙總表</span>
+          </Link>
         </div>
       </div>
 

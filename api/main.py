@@ -12,6 +12,7 @@ from api.routes import (
     accounts,
     opinion,
     whatif,
+    report,
 )
 
 logger = logging.getLogger("api.main")
@@ -51,6 +52,7 @@ app.include_router(rankings.router)
 app.include_router(accounts.router)
 app.include_router(opinion.router)
 app.include_router(whatif.router)
+app.include_router(report.router)
 
 
 @app.get("/")

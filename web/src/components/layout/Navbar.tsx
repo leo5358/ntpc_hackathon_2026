@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { ShieldCheck, BarChart3, Sliders, BookOpen, MapPin } from "lucide-react";
+import { ShieldCheck, BarChart3, Sliders, BookOpen, MapPin, FileText } from "lucide-react";
 
 export const Navbar: React.FC = () => {
   const location = useLocation();
@@ -8,6 +8,7 @@ export const Navbar: React.FC = () => {
   const navItems = [
     { path: "/", label: "風險排行", icon: BarChart3 },
     { path: "/map", label: "風險地圖", icon: MapPin },
+    { path: "/report", label: "綜整報告", icon: FileText },
     { path: "/sandbox", label: "權重沙盒", icon: Sliders },
     { path: "/method", label: "模型方法論", icon: BookOpen },
   ];
@@ -31,7 +32,10 @@ export const Navbar: React.FC = () => {
           <nav className="flex space-x-1 sm:space-x-4">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname === item.path;
+              const isActive =
+                item.path === "/"
+                  ? location.pathname === "/"
+                  : location.pathname.startsWith(item.path);
               return (
                 <Link
                   key={item.path}
