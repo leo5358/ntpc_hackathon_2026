@@ -1,12 +1,30 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
 import { Filter, AlertCircle, ArrowRight, MapPin } from "lucide-react";
 import "leaflet/dist/leaflet.css";
 
 // Taiwan New Taipei City geographical center
 const NTPC_CENTER: [number, number] = [25.012, 121.465]; // Banqiao / NTPC center
 const DEFAULT_ZOOM = 11;
+
+/**
+ * Component to ensure Leaflet recalculates dimensions after initial render
+ * or route navigation transition.
+ */
+const MapResizer: React.FC = () => {
+  const map = useMap();
+  useEffect(() => {
+    map.invalidateSize();
+    const t1 = setTimeout(() => map.invalidateSize(), 150);
+    const t2 = setTimeout(() => map.invalidateSize(), 500);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [map]);
+  return null;
+};
 
 interface KindergartenMapPoint {
   id: string;
@@ -284,16 +302,22 @@ export const RiskMapPage: React.FC = () => {
       </div>
 
       {/* Map Canvas */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden h-[650px] relative z-0">
+      <div
+        className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative"
+        style={{ height: "650px", minHeight: "550px", width: "100%" }}
+      >
         <MapContainer
           center={NTPC_CENTER}
           zoom={DEFAULT_ZOOM}
           scrollWheelZoom={true}
-          style={{ width: "100%", height: "100%" }}
+          style={{ width: "100%", height: "100%", minHeight: "550px" }}
         >
+          <MapResizer />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}.png"
+            subdomains={["a", "b", "c"]}
+            maxZoom={19}
           />
 
           {filteredSchools.map((school) => {
