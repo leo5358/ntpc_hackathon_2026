@@ -39,13 +39,17 @@ class OpinionAnalysisPipeline:
             ]
         )
 
-        # 1. Crawl raw opinions
-        raw_docs = crawl_institution_opinions(inst_name=inst_name, aliases=[f"{core_name}幼兒園", f"{core_name}非營利"])
+        # 1. Crawl raw opinions from multiple sources (Google News, PTT, Dcard, Threads)
+        raw_docs = crawl_institution_opinions(
+            inst_name=inst_name,
+            aliases=[f"{core_name}幼兒園", f"{core_name}非營利"],
+            core_name=core_name,
+        )
 
         # 2. Match and filter relevant documents
         matched_pairs = []
         for doc in raw_docs:
-            combined = f"{doc.title} {doc.snippet}"
+            combined = f"{doc.title} {doc.raw_content or doc.snippet}"
             matched, conf, terms = matcher.match_document(combined, inst_id)
             if matched:
                 matched_pairs.append(doc)
@@ -55,10 +59,11 @@ class OpinionAnalysisPipeline:
         # 3. Classify with AWS Bedrock Claude (or rule fallback)
         classified_results = []
         for doc in matched_pairs[:max_docs_to_classify]:
+            text_to_analyze = doc.raw_content if doc.raw_content else doc.snippet
             res = self.classifier.classify_single(
                 doc_id=doc.id,
                 title=doc.title,
-                snippet=doc.snippet,
+                snippet=text_to_analyze,
                 inst_name=inst_name,
             )
             classified_results.append((doc, res))

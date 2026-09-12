@@ -163,7 +163,7 @@ make build-frontend
 
 ## 🔍 輿情爬蟲與 Bedrock 模型分析使用方式 (Opinion Crawler & Bedrock Inference)
 
-輿情分析模組整合多源網路爬蟲（Google News RSS、PTT 媽寶板、Dcard 親子板）、實體消歧義對齊，並透過 **Amazon Bedrock (Claude 3 Haiku)** 進行 6 大法規風險議題分類與情緒極性計算，最終透過時間指數衰減算出機構輿情風險指數（`opinion_risk`，0–100 分）。
+輿情分析模組整合多源網路爬蟲（**Google News RSS、PTT 媽寶板、Dcard 親子板、Threads 兩階段深度留言串爬蟲**）、實體消歧義對齊，並透過 **Amazon Bedrock (Claude 3.5 / 4.5 Haiku)** 進行 6 大法規風險議題分類與情緒極性計算，最終透過時間指數衰減算出機構輿情風險指數（`opinion_risk`，0–100 分）。
 
 ### 1. 透過 CLI 獨立執行即時爬取與分析
 

@@ -177,8 +177,10 @@ def fetch_dcard_posts(query: str, limit: int = 5) -> List[RawOpinionDoc]:
     return docs
 
 
-def crawl_institution_opinions(inst_name: str, aliases: Optional[List[str]] = None) -> List[RawOpinionDoc]:
-    """Collect opinion docs from Google News, PTT, and Dcard across queries."""
+def crawl_institution_opinions(
+    inst_name: str, aliases: Optional[List[str]] = None, core_name: Optional[str] = None
+) -> List[RawOpinionDoc]:
+    """Collect opinion docs from Google News, PTT, Dcard, and Threads across queries."""
     queries = [inst_name]
     if aliases:
         queries.extend(aliases)
@@ -199,7 +201,19 @@ def crawl_institution_opinions(inst_name: str, aliases: Optional[List[str]] = No
                 seen_titles.add(cleaned_title)
                 all_docs.append(doc)
 
-    logger.info("Total crawled %d raw documents for %s", len(all_docs), inst_name)
+    # Fetch rich Threads discussion threads (including root post + full parent replies)
+    try:
+        from pipeline.nlp.threads_crawler import ThreadsDeepCrawler
+
+        c_name = core_name or (aliases[0] if aliases else inst_name)
+        threads_docs = ThreadsDeepCrawler().collect_for_institution(inst_name=inst_name, core_name=c_name)
+        for t_doc in threads_docs:
+            if t_doc.id not in {d.id for d in all_docs}:
+                all_docs.append(t_doc)
+    except Exception as e:
+        logger.warning("Threads crawler step encountered issue: %s", e)
+
+    logger.info("Total crawled %d raw documents (including Threads) for %s", len(all_docs), inst_name)
     return all_docs
 
 
