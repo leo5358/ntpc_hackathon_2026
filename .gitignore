@@ -2,6 +2,9 @@
 .env
 *.env
 .DS_Store
+node_modules/
+__pycache__/
+.venv/
 Thumbs.db
 
 # Node / Web
