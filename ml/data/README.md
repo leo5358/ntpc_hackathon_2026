@@ -1,6 +1,6 @@
 # 資料說明
 
-這個專案位於 repo 的 `ml/` 目錄，以下所有指令都在 `ml/` 底下執行。
+這個專案位於 repo 的 `ml/` 目錄，以下所有指令都在 `ml/` 底下執行。只想使用最終模型的話，看 `ml/USAGE.md` 就夠了。
 
 `data/processed/` 的檔案都由 `pipeline/` 產生。原始 PDF 和 OCR 快取放在 `~/.cache/ntpc_hackathon/`，不進 repo。
 
