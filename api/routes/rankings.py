@@ -1,7 +1,7 @@
-"""Rankings route: filtered and sorted institution risk rankings."""
 from typing import Optional
 from fastapi import APIRouter, Query
-from api.schemas import RankingsResponse
+from api.schemas import RankingItem, RankingsResponse
+from api.services import institution_store
 
 router = APIRouter(prefix="/api/rankings", tags=["rankings"])
 
@@ -12,13 +12,12 @@ async def get_rankings(
     group: Optional[str] = Query(None, description="Peer group: 市立幼兒園 or 非營利園"),
     min_score: Optional[float] = Query(None, alias="min", description="Minimum risk score threshold"),
 ):
-    """Get sorted and filtered risk rankings.
-
-    Infra stub: returns structured schema skeleton.
-    """
+    """Get sorted and filtered risk rankings."""
+    items = institution_store.get_rankings(year=year, peer_group=group, min_score=min_score)
     return RankingsResponse(
         year=year,
         group=group,
-        total=0,
-        items=[],
+        total=len(items),
+        items=[RankingItem(**it) for it in items],
     )
+

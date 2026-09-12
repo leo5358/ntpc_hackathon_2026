@@ -15,7 +15,7 @@ from api.schemas import (
     RiskReportBuildRequest,
     RiskScalesResponse,
 )
-from api.services import narrative, report_builder
+from api.services import narrative, report_builder, institution_store
 from api.routes.opinion import SAMPLE_ROSTER, pipeline
 
 logger = logging.getLogger("api.routes.report")
@@ -64,9 +64,16 @@ async def get_institution_report(
     資料來源依序為：機構評分明細（旗標、裁罰、SHAP）與輿情分類結果；
     兩者皆為空時回傳無資料之空表，除非指定 demo=true。
     """
-    inst_info = SAMPLE_ROSTER.get(inst_id, {"name": f"幼兒園-{inst_id}", "district": ""})
-    name = inst_info["name"]
-    district = inst_info.get("district") or None
+    inst_store_detail = institution_store.get_institution_detail(inst_id)
+    if inst_store_detail:
+        name = inst_store_detail["name"]
+        district = inst_store_detail.get("district")
+        peer_group = inst_store_detail.get("peer_group", "非營利園")
+    else:
+        inst_info = SAMPLE_ROSTER.get(inst_id, {"name": f"幼兒園-{inst_id}", "district": ""})
+        name = inst_info["name"]
+        district = inst_info.get("district") or None
+        peer_group = "非營利園"
 
     signals = []
     source_urls = []
@@ -91,13 +98,13 @@ async def get_institution_report(
                 if doc.get("url")
             ]
 
-        # 機構評分明細目前為管線骨架，待 Stage 5 分數落地後改為實際查詢
-        signals.extend(report_builder.signals_from_detail({}))
+        if inst_store_detail:
+            signals.extend(report_builder.signals_from_detail(inst_store_detail))
 
     request = RiskReportBuildRequest(
         inst_id=inst_id,
         inst_name=name,
-        peer_group="非營利園",
+        peer_group=peer_group,
         district=district,
         academic_year=academic_year,
         roc_year=roc_year,
@@ -105,3 +112,4 @@ async def get_institution_report(
         source_urls=source_urls,
     )
     return report_builder.build_report(request, is_sample=demo)
+

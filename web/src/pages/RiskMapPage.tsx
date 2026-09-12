@@ -1,10 +1,11 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
 import { Filter, AlertCircle, ArrowRight, MapPin } from "lucide-react";
 import "leaflet/dist/leaflet.css";
 
-import { SAMPLE_MAP_DATA, getRiskLevel } from "../data/institutions";
+import { SAMPLE_MAP_DATA, getRiskLevel, KindergartenMapPoint } from "../data/institutions";
+import { api } from "../services/api";
 
 // Taiwan New Taipei City geographical center
 const NTPC_CENTER: [number, number] = [25.012, 121.465]; // Banqiao / NTPC center
@@ -30,18 +31,50 @@ const MapResizer: React.FC = () => {
 
 
 export const RiskMapPage: React.FC = () => {
+  const [schools, setSchools] = useState<KindergartenMapPoint[]>(SAMPLE_MAP_DATA);
   const [riskFilter, setRiskFilter] = useState<string>("all");
   const [groupFilter, setGroupFilter] = useState<string>("all");
 
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const data = await api.getInstitutions();
+        if (active && data && data.length > 0) {
+          const mapped: KindergartenMapPoint[] = data.map((item) => {
+            const fallback = SAMPLE_MAP_DATA.find((s) => s.id === item.id);
+            return {
+              id: item.id,
+              name: item.name,
+              peer_group: (item.peer_group as any) || fallback?.peer_group || "非營利園",
+              latest_score: item.latest_score ?? fallback?.latest_score ?? 0,
+              latitude: item.latitude ?? fallback?.latitude ?? 25.012,
+              longitude: item.longitude ?? fallback?.longitude ?? 121.465,
+              district: fallback?.district || "新北市",
+              penalty_count: item.penalty_count ?? fallback?.penalty_count ?? 0,
+              primary_flag: fallback?.primary_flag || (item.penalty_count > 0 ? "有歷史裁罰" : "正常"),
+            };
+          });
+          setSchools(mapped);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch institutions from API, using default data", err);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const filteredSchools = useMemo(() => {
-    return SAMPLE_MAP_DATA.filter((s) => {
+    return schools.filter((s) => {
       if (groupFilter !== "all" && s.peer_group !== groupFilter) return false;
       if (riskFilter === "high" && s.latest_score < 60) return false;
       if (riskFilter === "medium" && (s.latest_score < 30 || s.latest_score >= 60)) return false;
       if (riskFilter === "low" && s.latest_score >= 30) return false;
       return true;
     });
-  }, [riskFilter, groupFilter]);
+  }, [schools, riskFilter, groupFilter]);
 
   const stats = useMemo(() => {
     const total = filteredSchools.length;
@@ -49,6 +82,7 @@ export const RiskMapPage: React.FC = () => {
     const avg = total > 0 ? (filteredSchools.reduce((acc, cur) => acc + cur.latest_score, 0) / total).toFixed(1) : "0";
     return { total, high, avg };
   }, [filteredSchools]);
+
 
   return (
     <div className="space-y-6">
