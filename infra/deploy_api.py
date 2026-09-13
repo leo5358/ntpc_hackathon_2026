@@ -201,6 +201,9 @@ def build_package(work_dir: Path) -> Path:
                 zf.write(path, path.relative_to(pkg_dir))
 
     size_mb = zip_path.stat().st_size / 1024 / 1024
+    with zipfile.ZipFile(zip_path) as package:
+        if "api/services/score_cache.py" not in package.namelist():
+            raise RuntimeError("Deployment package is missing the S3 score loader")
     logger.info("部署包大小：%.1f MB（Lambda 直接上傳上限 50MB）", size_mb)
     if size_mb > 50:
         raise RuntimeError(f"部署包 {size_mb:.1f}MB 超過 Lambda 直接上傳上限，需改走 S3 或容器映像")

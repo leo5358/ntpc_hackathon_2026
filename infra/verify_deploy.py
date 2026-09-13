@@ -53,10 +53,29 @@ def invoke(lam, function_name: str, path: str, method: str = "GET", body: str = 
     return payload, None
 
 
+def has_real_institutions(body: str, minimum: int) -> bool:
+    """Reject demo-only, duplicate, empty, and malformed institution responses."""
+    try:
+        rows = json.loads(body)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(rows, list) or not rows:
+        return False
+    ids = [row.get("id") for row in rows if isinstance(row, dict)]
+    return (
+        len(ids) == len(rows)
+        and all(isinstance(key, str) and key.startswith("K") for key in ids)
+        and len(set(ids)) == len(ids)
+        and len(ids) >= minimum
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="Verify deployed Lambda behind API Gateway")
     parser.add_argument("--stage", default="dev")
     parser.add_argument("--region", default=None)
+    parser.add_argument("--min-institutions", type=int, default=1,
+                        help="Minimum real institutions required; demo records do not count")
     args = parser.parse_args()
 
     session = get_session(region=args.region)
@@ -80,6 +99,12 @@ def main():
             failures.append(path)
             continue
         status = payload.get("statusCode")
+        if status == 200 and path == "/api/institutions" and not has_real_institutions(
+            payload.get("body"), args.min_institutions
+        ):
+            print(f"  FAIL  {method} {path} — 未載入至少 {args.min_institutions} 筆真實園所資料")
+            failures.append(path)
+            continue
         if status == 200:
             print(f"  PASS  {method} {path}")
         else:
