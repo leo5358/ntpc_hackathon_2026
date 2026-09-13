@@ -73,6 +73,8 @@ jobs:
         if: steps.creds.outputs.has_creds == 'true'
         env:
           BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID || 'us.anthropic.claude-haiku-4-5-20251001-v1:0' }}
+          SCORES_BUCKET: ${{ vars.SCORES_BUCKET || 'demo-20260912' }}
+          SCORES_PREFIX: ${{ vars.SCORES_PREFIX || 'scores/' }}
         run: python -m infra.deploy_api --stage "$STAGE"
 
       - name: 驗證後端（直接叫用 Lambda，繞過 IP 白名單）

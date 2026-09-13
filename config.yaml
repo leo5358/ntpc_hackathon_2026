@@ -1,7 +1,7 @@
 aws:
   region: us-west-2
   profile_name: workshop
-  bucket_name: kiro-workshop-default
+  bucket_name: demo-20260912
   execution_role_arn: arn:aws:iam::123456789012:role/kiro-sagemaker-execution-role
   s3_prefixes:
     raw: raw/
