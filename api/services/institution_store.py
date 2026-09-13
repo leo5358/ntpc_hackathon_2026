@@ -562,6 +562,36 @@ logger = logging.getLogger("api.services.institution_store")
 NAME_TO_ID: Dict[str, str] = {inst["name"]: inst_id for inst_id, inst in INSTITUTIONS_DB.items()}
 
 
+def _calibrate_score(risk_prob: float) -> float:
+    """Convert raw risk_probability (0–1) to a calibrated 0–100 risk score.
+
+    Uses a piecewise-linear mapping anchored at the baseline violation rate
+    (~9%) ≈ 20 points.  The breakpoints are chosen so that:
+      - High risk  (≥ 60):  ~20 schools  (top ~1.7 %)
+      - Medium risk (30–59): ~218 schools (18 %)
+      - Low risk   (< 30):  ~973 schools (80 %)
+      - Max score capped at 85 (no school scores 100).
+    """
+    rp = max(0.0, min(1.0, risk_prob))
+
+    # (rp_lo, rp_hi) -> (score_lo, score_hi)
+    segments = [
+        (0.00, 0.05,  0,  8),   # 極低風險（公立/非營利為主）
+        (0.05, 0.09,  8, 20),   # 低風險（低於基準率）
+        (0.09, 0.12, 20, 30),   # 平均水準（~基準違規率 8.4-12%）
+        (0.12, 0.20, 30, 45),   # 中風險下段（1.4-2.4x 基準率）
+        (0.20, 0.28, 45, 60),   # 中風險上段（2.4-3.3x 基準率）
+        (0.28, 0.45, 60, 75),   # 高風險（3.3-5.4x 基準率）
+        (0.45, 0.60, 75, 85),   # 極高風險（≥5.4x 基準率）
+    ]
+    for rp_lo, rp_hi, s_lo, s_hi in segments:
+        if rp <= rp_hi:
+            t = (rp - rp_lo) / (rp_hi - rp_lo) if rp_hi > rp_lo else 0.0
+            return round(s_lo + t * (s_hi - s_lo), 1)
+
+    return 85.0  # cap
+
+
 def _normalize_group(grp: str) -> str:
     """Map raw group strings to standard frontend categories."""
     if not grp:
@@ -652,7 +682,10 @@ def _load_dynamic_institutions():
                 raw_grp = row.get("group", "私立")
                 peer_group = _normalize_group(raw_grp)
                 risk_prob = float(row.get("risk_probability", 0.0) or 0.0)
-                score = round(risk_prob * 100, 1)
+                percentile = float(row.get("percentile", 0.0) or 0.0)
+                screen_flag = row.get("screen_flag", "").strip().lower() == "true"
+                priority_flag = row.get("priority_flag", "").strip().lower() == "true"
+                score = _calibrate_score(risk_prob)
 
                 risk_level = "high" if score >= 60 else ("medium" if score >= 30 else "low")
                 pen_list = penalties_by_name.get(inst_name, [])
@@ -701,11 +734,11 @@ def _load_dynamic_institutions():
                     "latest_score": score,
                     "risk_level": risk_level,
                     "features": {
-                        "penalty": round(min(100.0, len(pen_list) * 35.0 + (50.0 if score >= 60 else 15.0)), 1),
-                        "residual": round(score * 0.9, 1),
-                        "isolation_forest": round(score * 0.8, 1),
-                        "opinion": round(score * 0.7, 1),
-                        "flags": round(score * 0.85, 1),
+                        "penalty": round(min(100.0, len(pen_list) * 25.0 + (30.0 if len(pen_list) > 0 else 5.0)), 1),
+                        "residual": round(min(100.0, risk_prob * 120.0), 1),
+                        "isolation_forest": round(percentile * 100.0, 1),
+                        "opinion": 50.0 if any(f in ("opinion", "輿情") for f in top_factors) else 5.0,
+                        "flags": 80.0 if priority_flag else (40.0 if screen_flag else 5.0),
                     },
                     "history": [
                         {"academic_year": 110, "score": round(max(0.0, score - 8.0), 1), "p_penalty": max(0.01, risk_prob - 0.08), "residual_z": 0.3, "iso_score": 0.2, "opinion_risk": 0.1},
@@ -826,11 +859,11 @@ def get_accounts(inst_id: str, year: int) -> List[Dict[str, Any]]:
 
 def compute_whatif(weights: Dict[str, float], year: int = 112, peer_group: Optional[str] = None) -> List[Dict[str, Any]]:
     """Re-compute scores and rank changes based on user custom weights."""
-    w_penalty = weights.get("penalty", 0.45)
+    w_penalty = weights.get("penalty", 0.40)
     w_residual = weights.get("residual", 0.20)
     w_iso = weights.get("isolation_forest", 0.15)
     w_opinion = weights.get("opinion", 0.10)
-    w_flags = weights.get("flags", 0.10)
+    w_flags = weights.get("flags", 0.15)
     total_w = w_penalty + w_residual + w_iso + w_opinion + w_flags or 1.0
 
     # Normalization
