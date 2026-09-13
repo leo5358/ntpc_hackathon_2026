@@ -59,7 +59,7 @@ export const InstitutionDetailPage: React.FC = () => {
     if (!id || crawling) return;
     setCrawling(true);
     try {
-      const freshOpinion = await api.getOpinion(id);
+      const freshOpinion = await api.getOpinion(id, true);
       setOpinion(freshOpinion);
     } catch (err) {
       console.error("Failed to refresh opinion:", err);

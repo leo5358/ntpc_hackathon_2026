@@ -51,7 +51,7 @@ class ThreadsThread:
 SAMPLE_THREADS_DATABASE: Dict[str, Dict] = {
     "北大": {
         "post_id": "C9X8k21Lp0Q",
-        "url": "https://www.threads.net/@sanxia_mom_life/post/C9X8k21Lp0Q",
+        "url": "https://www.threads.net/search?q=新北%20北大%20幼兒園",
         "author": "sanxia_mom_life",
         "root_text": "想請問北大特區的媽媽們，有人家裡小孩是讀北大非營利幼兒園的嗎？想了解師資穩定度跟日常活動安排如何～今年正在猶豫要不要抽這家🙏",
         "created_at": "2024-06-15",
@@ -78,7 +78,7 @@ SAMPLE_THREADS_DATABASE: Dict[str, Dict] = {
     },
     "新林": {
         "post_id": "C7k1m09Pq1Z",
-        "url": "https://www.threads.net/@linkou_parent/post/C7k1m09Pq1Z",
+        "url": "https://www.threads.net/search?q=新北%20新林%20幼兒園",
         "author": "linkou_parent",
         "root_text": "林口幼兒園避雷請益！請問新林非營利幼兒園評價好嗎？有看到社團有人在討論代辦費跟餐食的問題？",
         "created_at": "2024-05-10",
@@ -99,7 +99,7 @@ SAMPLE_THREADS_DATABASE: Dict[str, Dict] = {
     },
     "文中": {
         "post_id": "D2m8v31Kx89",
-        "url": "https://www.threads.net/@sanchong_daily/post/D2m8v31Kx89",
+        "url": "https://www.threads.net/search?q=新北%20文中%20幼兒園",
         "author": "sanchong_daily",
         "root_text": "三重文中幼兒園有人有經驗嗎？聽鄰居說今年超額超收很多，不知道師生照顧品質會不會下降？",
         "created_at": "2024-08-01",

@@ -72,13 +72,27 @@ def fetch_google_news(query: str, max_results: int = 10) -> List[RawOpinionDoc]:
             soup = BeautifulSoup(desc, "html.parser")
             clean_snippet = soup.get_text(separator=" ").strip()
 
+            # Decode the exact original media article URL directly from Google News token
+            original_url = None
+            try:
+                from googlenewsdecoder import gnewsdecoder
+                dec = gnewsdecoder(link)
+                if dec.get("status") and dec.get("decoded_url"):
+                    original_url = dec["decoded_url"]
+            except Exception as decode_err:
+                logger.debug("Failed to decode Google News url: %s", decode_err)
+
+            if not original_url:
+                clean_title = re.sub(r"\s*-[^-]+$", "", title).strip()
+                original_url = f"https://www.google.com/search?q={urllib.parse.quote(clean_title or title)}"
+
             doc_id = f"gnews_{int(datetime.now().timestamp())}_{idx}"
             docs.append(
                 RawOpinionDoc(
                     id=doc_id,
                     source="google_news",
                     title=title,
-                    url=link,
+                    url=original_url,
                     published_date=parse_rfc822_date(pub_date),
                     snippet=clean_snippet[:500],
                     query=query,
@@ -97,7 +111,9 @@ def fetch_ptt_babymother(query: str, max_pages: int = 2) -> List[RawOpinionDoc]:
     cookies = {"over18": "1"}
 
     try:
-        encoded_query = urllib.parse.quote(query)
+        # PTT search works best with single keywords without whitespace
+        search_kw = query.split()[0] if " " in query else query
+        encoded_query = urllib.parse.quote(search_kw)
         search_url = f"{base_url}/bbs/BabyMother/search?q={encoded_query}"
         logger.info("Searching PTT BabyMother: %s", search_url)
 
@@ -144,14 +160,14 @@ def fetch_ptt_babymother(query: str, max_pages: int = 2) -> List[RawOpinionDoc]:
 
 
 def fetch_dcard_posts(query: str, limit: int = 5) -> List[RawOpinionDoc]:
-    """Search public posts on Dcard parenting forum."""
+    """Search public posts on Dcard parenting forum (with RSS fallback when Cloudflare 403 occurs)."""
     docs: List[RawOpinionDoc] = []
     encoded_query = urllib.parse.quote(query)
     search_url = f"https://www.dcard.tw/service/api/v2/search/posts?query={encoded_query}&limit={limit}"
 
     try:
         logger.info("Querying Dcard search API: %s", search_url)
-        resp = requests.get(search_url, headers=DEFAULT_HEADERS, timeout=10)
+        resp = requests.get(search_url, headers=DEFAULT_HEADERS, timeout=5)
         if resp.status_code == 200:
             posts = resp.json()
             for idx, p in enumerate(posts[:limit]):
@@ -171,6 +187,46 @@ def fetch_dcard_posts(query: str, limit: int = 5) -> List[RawOpinionDoc]:
                         query=query,
                     )
                 )
+        else:
+            # Dcard API returns 403 (Cloudflare protected). Fallback to searching Dcard posts via Google News RSS
+            dcard_rss_url = f"https://news.google.com/rss/search?q=site%3Adcard.tw+{encoded_query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+            rss_resp = requests.get(dcard_rss_url, headers=DEFAULT_HEADERS, timeout=5)
+            if rss_resp.status_code == 200:
+                root = ET.fromstring(rss_resp.content)
+                items = root.findall("./channel/item")
+                for idx, item in enumerate(items[:limit]):
+                    title = item.findtext("title", default="").strip()
+                    link = item.findtext("link", default="").strip()
+                    desc = item.findtext("description", default="").strip()
+                    pub_date = item.findtext("pubDate", default="").strip()
+                    soup = BeautifulSoup(desc, "html.parser")
+                    clean_snippet = soup.get_text(separator=" ").strip()
+
+                    dcard_original_url = None
+                    try:
+                        from googlenewsdecoder import gnewsdecoder
+                        dec = gnewsdecoder(link)
+                        if dec.get("status") and dec.get("decoded_url"):
+                            dcard_original_url = dec["decoded_url"]
+                    except Exception as de:
+                        logger.debug("Dcard RSS url decode error: %s", de)
+
+                    if not dcard_original_url:
+                        clean_title = re.sub(r"\s*-[^-]+$", "", title).strip()
+                        dcard_original_url = f"https://www.dcard.tw/search/general?query={urllib.parse.quote(clean_title or query)}"
+
+                    doc_id = f"dcard_rss_{int(datetime.now().timestamp())}_{idx}"
+                    docs.append(
+                        RawOpinionDoc(
+                            id=doc_id,
+                            source="dcard",
+                            title=title,
+                            url=dcard_original_url,
+                            published_date=parse_rfc822_date(pub_date),
+                            snippet=clean_snippet[:500],
+                            query=query,
+                        )
+                    )
     except Exception as e:
         logger.error("Error querying Dcard for query '%s': %s", query, e)
 
@@ -193,9 +249,18 @@ def crawl_institution_opinions(
             continue
         gnews = fetch_google_news(q, max_results=5)
         ptt = fetch_ptt_babymother(q, max_pages=1)
-        dcard = fetch_dcard_posts(q, limit=3)
+        dcard = fetch_dcard_posts(q, limit=2)
 
         for doc in gnews + ptt + dcard:
+            cleaned_title = re.sub(r"\s+", "", doc.title)
+            if cleaned_title not in seen_titles:
+                seen_titles.add(cleaned_title)
+                all_docs.append(doc)
+
+    # If core_name is provided, also try searching PTT with the short core name
+    if core_name and core_name not in queries:
+        core_ptt = fetch_ptt_babymother(core_name, max_pages=1)
+        for doc in core_ptt:
             cleaned_title = re.sub(r"\s+", "", doc.title)
             if cleaned_title not in seen_titles:
                 seen_titles.add(cleaned_title)

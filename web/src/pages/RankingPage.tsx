@@ -12,6 +12,7 @@ import {
   RotateCw,
   X,
   ExternalLink,
+  Sparkles,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api";
@@ -33,13 +34,13 @@ export const RankingPage: React.FC = () => {
   const [opinionLoading, setOpinionLoading] = useState<boolean>(false);
   const [opinionError, setOpinionError] = useState<string | null>(null);
 
-  const handleOpenOpinion = async (item: RankingItem) => {
+  const handleOpenOpinion = async (item: RankingItem, liveCrawl: boolean = false) => {
     setSelectedInst(item);
     setOpinionData(null);
     setOpinionError(null);
     setOpinionLoading(true);
     try {
-      const data = await api.getOpinion(item.id);
+      const data = await api.getOpinion(item.id, liveCrawl);
       setOpinionData(data);
     } catch (err: any) {
       setOpinionError(err?.message || "無法載入該機構輿情資料");
@@ -408,13 +409,24 @@ export const RankingPage: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={handleCloseOpinion}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
-                title="關閉"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => handleOpenOpinion(selectedInst, true)}
+                  disabled={opinionLoading}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-xs transition disabled:opacity-50 cursor-pointer"
+                  title="連線 Google 新聞、PTT、Dcard 與 Threads 並透過 AWS Bedrock Claude 進行即時爬取與語意分析"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{opinionLoading ? "即時分析中..." : "即時連網分析"}</span>
+                </button>
+                <button
+                  onClick={handleCloseOpinion}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                  title="關閉"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Body */}
@@ -422,7 +434,8 @@ export const RankingPage: React.FC = () => {
               {opinionLoading ? (
                 <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-3">
                   <RotateCw className="w-8 h-8 text-blue-500 animate-spin" />
-                  <p className="text-sm text-slate-600 font-medium">正在取得公開社群與媒體輿情資訊...</p>
+                  <p className="text-sm text-slate-700 font-semibold">正在即時爬取全網新聞、PTT、Dcard 與 Threads...</p>
+                  <p className="text-xs text-slate-400">連線 AWS Bedrock Claude 模型進行法規議題分類與情緒極性推論中</p>
                 </div>
               ) : opinionError ? (
                 <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
@@ -556,11 +569,19 @@ export const RankingPage: React.FC = () => {
                         ))}
                       </div>
                     ) : (
-                      <div className="py-10 bg-slate-50 rounded-xl text-center space-y-2 border border-dashed border-slate-200">
-                        <p className="text-sm text-slate-600 font-medium">該園所目前尚無重大社群警示訊息</p>
-                        <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                          公開網路論壇與評分中均未發現有關不當管教、餐食衛生或超收等爭議貼文。
+                      <div className="py-10 bg-slate-50 rounded-xl text-center space-y-3 border border-dashed border-slate-200 p-4">
+                        <p className="text-sm text-slate-700 font-semibold">該園所目前尚無快取重大社群警示訊息</p>
+                        <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                          公開網路論壇與評分中暫無預置警示。您可以點擊下方按鈕啟動即時線上爬蟲與 AI 語意探勘。
                         </p>
+                        <button
+                          onClick={() => handleOpenOpinion(selectedInst, true)}
+                          disabled={opinionLoading}
+                          className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition disabled:opacity-50 cursor-pointer"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          <span>啟動即時全網爬蟲與 Bedrock 分析</span>
+                        </button>
                       </div>
                     )}
                   </div>
