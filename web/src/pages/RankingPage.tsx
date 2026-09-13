@@ -10,10 +10,12 @@ import {
   MessageSquare,
   ShieldAlert,
   RotateCw,
+  X,
+  ExternalLink,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api";
-import { RankingItem } from "../types/api";
+import { RankingItem, OpinionResponse } from "../types/api";
 import { getRiskLevel } from "../data/institutions";
 
 export const RankingPage: React.FC = () => {
@@ -24,6 +26,33 @@ export const RankingPage: React.FC = () => {
   const [items, setItems] = useState<RankingItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Opinion modal state
+  const [selectedInst, setSelectedInst] = useState<RankingItem | null>(null);
+  const [opinionData, setOpinionData] = useState<OpinionResponse | null>(null);
+  const [opinionLoading, setOpinionLoading] = useState<boolean>(false);
+  const [opinionError, setOpinionError] = useState<string | null>(null);
+
+  const handleOpenOpinion = async (item: RankingItem) => {
+    setSelectedInst(item);
+    setOpinionData(null);
+    setOpinionError(null);
+    setOpinionLoading(true);
+    try {
+      const data = await api.getOpinion(item.id);
+      setOpinionData(data);
+    } catch (err: any) {
+      setOpinionError(err?.message || "無法載入該機構輿情資料");
+    } finally {
+      setOpinionLoading(false);
+    }
+  };
+
+  const handleCloseOpinion = () => {
+    setSelectedInst(null);
+    setOpinionData(null);
+    setOpinionError(null);
+  };
 
   const fetchRankings = async () => {
     setLoading(true);
@@ -313,11 +342,22 @@ export const RankingPage: React.FC = () => {
                       {/* Opinion */}
                       <td className="py-4 px-4 text-center">
                         {item.has_opinion ? (
-                          <span className="inline-flex items-center justify-center text-blue-600" title="已有公開社群與新聞輿情資料">
-                            <MessageSquare className="w-4 h-4" />
-                          </span>
+                          <button
+                            onClick={() => handleOpenOpinion(item)}
+                            className="inline-flex items-center space-x-1 px-2 py-1 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition shadow-xs cursor-pointer group"
+                            title="點擊查看該園所輿情摘要與原始報導訊息"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 text-blue-600 group-hover:scale-110 transition-transform" />
+                            <span>查看輿情</span>
+                          </button>
                         ) : (
-                          <span className="text-slate-300 text-xs">-</span>
+                          <button
+                            onClick={() => handleOpenOpinion(item)}
+                            className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                            title="查閱輿情狀態"
+                          >
+                            <span className="text-slate-400 text-xs">無預警</span>
+                          </button>
                         )}
                       </td>
 
@@ -346,6 +386,208 @@ export const RankingPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Opinion Detail Modal */}
+      {selectedInst && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-lg font-bold text-slate-900">{selectedInst.name}</h3>
+                    <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-mono">
+                      {selectedInst.id}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    社群輿情觀測與語意分析摘要（PTT、Dcard、Google 評論與新聞）
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleCloseOpinion}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                title="關閉"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              {opinionLoading ? (
+                <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center space-y-3">
+                  <RotateCw className="w-8 h-8 text-blue-500 animate-spin" />
+                  <p className="text-sm text-slate-600 font-medium">正在取得公開社群與媒體輿情資訊...</p>
+                </div>
+              ) : opinionError ? (
+                <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
+                  {opinionError}
+                </div>
+              ) : opinionData ? (
+                <>
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                      <span className="text-xs text-slate-500 font-medium block">輿情風險指數</span>
+                      <span
+                        className={`text-xl font-bold font-mono mt-1 block ${
+                          opinionData.opinion_risk >= 60
+                            ? "text-rose-600"
+                            : opinionData.opinion_risk >= 30
+                            ? "text-amber-600"
+                            : "text-emerald-600"
+                        }`}
+                      >
+                        {opinionData.opinion_risk.toFixed(1)}
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                      <span className="text-xs text-slate-500 font-medium block">社群討論則數</span>
+                      <span className="text-xl font-bold text-slate-800 font-mono mt-1 block">
+                        {opinionData.coverage} 則
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                      <span className="text-xs text-slate-500 font-medium block">主要警示主題</span>
+                      <span className="text-sm font-bold text-slate-800 mt-1 block truncate">
+                        {Object.keys(opinionData.topic_distribution).length > 0
+                          ? Object.keys(opinionData.topic_distribution)[0]
+                          : "無異常警示"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Topic Tags */}
+                  {Object.keys(opinionData.topic_distribution).length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        討論主題分類分布
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(opinionData.topic_distribution).map(([topic, count]) => (
+                          <span
+                            key={topic}
+                            className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
+                          >
+                            <span>{topic}</span>
+                            <span className="w-4 h-4 rounded-full bg-indigo-200/70 text-indigo-800 text-[10px] flex items-center justify-center font-bold">
+                              {count}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Raw Messages & Links List */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        原始社群訊息與報導 ({opinionData.documents.length})
+                      </h4>
+                      <span className="text-[11px] text-slate-400">已透過語意模型排除無關同名文章</span>
+                    </div>
+
+                    {opinionData.documents.length > 0 ? (
+                      <div className="space-y-3">
+                        {opinionData.documents.map((doc) => (
+                          <div
+                            key={doc.id}
+                            className="p-4 bg-slate-50/80 hover:bg-slate-50 rounded-xl border border-slate-200 transition space-y-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-white border border-slate-200 text-slate-700 shadow-2xs">
+                                  {doc.source}
+                                </span>
+                                {doc.published_date && (
+                                  <span className="text-xs text-slate-400 font-mono">
+                                    {doc.published_date}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                  {doc.topic}
+                                </span>
+                                <span
+                                  className={`text-[11px] font-mono font-bold ${
+                                    doc.polarity < -0.3 ? "text-rose-600" : "text-slate-500"
+                                  }`}
+                                >
+                                  極性: {doc.polarity > 0 ? "+" : ""}{doc.polarity.toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {doc.title && (
+                              <h5 className="text-sm font-semibold text-slate-800 leading-snug">
+                                {doc.title}
+                              </h5>
+                            )}
+
+                            <p className="text-xs text-slate-600 leading-relaxed bg-white p-2.5 rounded-lg border border-slate-100">
+                              {doc.snippet}
+                            </p>
+
+                            {doc.url ? (
+                              <div className="pt-1 flex justify-end">
+                                <a
+                                  href={doc.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center space-x-1 text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline cursor-pointer"
+                                >
+                                  <span>查看原始討論連結</span>
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 italic">無公開網址</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-10 bg-slate-50 rounded-xl text-center space-y-2 border border-dashed border-slate-200">
+                        <p className="text-sm text-slate-600 font-medium">該園所目前尚無重大社群警示訊息</p>
+                        <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                          公開網路論壇與評分中均未發現有關不當管教、餐食衛生或超收等爭議貼文。
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              <Link
+                to={`/institutions/${selectedInst.id}`}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1"
+              >
+                <span>前往該園所完整指標分析</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+              <button
+                onClick={handleCloseOpinion}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-medium transition cursor-pointer"
+              >
+                關閉
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
