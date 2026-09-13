@@ -90,22 +90,6 @@ RISK_ITEM_CATALOG: Dict[str, Dict[str, Any]] = {
         "owner_unit": "新北市政府教育局幼兒教育科",
         "base_impact": 2,
     },
-    "MODEL_SCREENING": {
-        "risk_item": "模型預警：預測隔年受裁罰機率偏高",
-        "risk_scenario": (
-            "風險模型依園所類型、核定規模、收費與裁罰歷史等名冊屬性，預測該園於次一年度"
-            "受教保相關裁罰之機率高於全市多數園所。此為統計相對指標，尚無具體違規事證，"
-            "須由承辦科室實地查核確認成因。"
-        ),
-        "existing_control": "依年度計畫辦理例行訪視與書面審查。",
-        "additional_control": (
-            "列入年度優先實地查核名單，查核時併同調閱最近一次訪視紀錄與家長陳情案件，"
-            "確認是否存在模型未涵蓋之風險訊號。"
-        ),
-        "owner_unit": "新北市政府教育局幼兒教育科",
-        # 僅知「可能被裁罰」而不知違規態樣，影響程度採最保守之 1
-        "base_impact": 1,
-    },
     "PENALTY_RECIDIVISM": {
         "risk_item": "歷史裁罰再犯風險",
         "risk_scenario": (
@@ -218,8 +202,6 @@ PRIMARY_FLAG_TO_CODE: Dict[str, str] = {
     "超收學童與師生比爭議": "OPINION_行政與立案",
     "固定資產維護支出偏低": "ASSET_MAINTENANCE_LOW",
     "一般水電支出偏高": "UTILITY_COST_HIGH",
-    "歷史裁罰再犯風險": "PENALTY_RECIDIVISM",
-    "模型預警：預測隔年受裁罰機率偏高": "MODEL_SCREENING",
 }
 
 
@@ -271,13 +253,13 @@ def likelihood_from_score(
 
 
 def likelihood_from_composite_score(score: float) -> int:
-    """由 0–100 風險百分位換算可能性(L)，門檻與前端 RISK_BANDS 一致。
+    """由 0–100 綜合風險分數換算可能性(L)，門檻與前端風險色階三段一致。
 
-        >= 90 優先稽查名單（前 10%） -> 3 幾乎確定
-        30 ~ 89 篩檢名單範圍          -> 2 可能
-        < 30                          -> 1 幾乎不可能
+        >= 60 高風險 -> 3 幾乎確定
+        30 ~ 59 中風險 -> 2 可能
+        < 30 低風險   -> 1 幾乎不可能
     """
-    if score >= 90:
+    if score >= 60:
         return 3
     if score >= 30:
         return 2
@@ -346,7 +328,6 @@ def grade_for_school(
     primary_flag: Optional[str],
     composite_score: float,
     penalty_count: int = 0,
-    code: str = "",
 ) -> Dict[str, Any]:
     """機構層級的風險等級，供全市風險圖像(附件4)標示落點。
 
@@ -356,15 +337,13 @@ def grade_for_school(
     row = build_row(
         1,
         ModelSignalInput(
-            code=code,
             primary_flag=primary_flag,
             composite_score=composite_score,
             penalty_count=penalty_count,
         ),
     )
-    # 對映不到目錄時（如「正常」「財務運作正常」），不要沿用泛用項目的名稱充數
-    resolved = code or code_from_primary_flag(primary_flag)
-    risk_item = row.risk_item if resolved in RISK_ITEM_CATALOG else "未對映至特定風險項目"
+    # 旗標對映不到目錄時（如「正常」「財務運作正常」），不要沿用泛用項目的名稱充數
+    risk_item = row.risk_item if code_from_primary_flag(primary_flag) else "未對映至特定風險項目"
     return {"grade": row.existing, "risk_item": risk_item}
 
 

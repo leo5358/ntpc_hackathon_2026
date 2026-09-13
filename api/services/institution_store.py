@@ -528,6 +528,26 @@ INSTITUTIONS_DB: Dict[str, Dict[str, Any]] = {
 }
 
 
+def get_all_institutions(peer_group: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Return filtered institution items for list/map view."""
+    items = []
+    for inst in INSTITUTIONS_DB.values():
+        if peer_group and peer_group != "all" and inst["peer_group"] != peer_group:
+            continue
+        items.append({
+            "id": inst["id"],
+            "name": inst["name"],
+            "peer_group": inst["peer_group"],
+            "latest_score": inst["latest_score"],
+            "penalty_count": inst["penalty_count"],
+            "risk_level": inst["risk_level"],
+            "latitude": inst["latitude"],
+            "longitude": inst["longitude"],
+            "address": inst["address"],
+        })
+    return items
+
+
 
 # ---------------------------------------------------------
 # Dynamic Loader: Ingest all 1,211 NTPC institutions from ML pipeline
@@ -540,12 +560,6 @@ from pathlib import Path
 logger = logging.getLogger("api.services.institution_store")
 
 NAME_TO_ID: Dict[str, str] = {inst["name"]: inst_id for inst_id, inst in INSTITUTIONS_DB.items()}
-
-# 上面那批是手寫的示範機構，分數與科目明細都是假的。真實資料載入後仍保留它們
-# （/i/N07、/report/N07 等展示動線要用），但必須排除在清單與排名之外，
-# 否則虛構分數會混進全市統計，甚至被當成全市風險最高的園所。
-CURATED_SAMPLE_IDS: set = set(INSTITUTIONS_DB)
-DYNAMIC_DATA_LOADED = False
 
 
 def _normalize_group(grp: str) -> str:
@@ -561,34 +575,15 @@ def _normalize_group(grp: str) -> str:
     return grp
 
 
-def _reset_dynamic_institutions() -> None:
-    """清掉前一次載入的動態機構，讓 reload 不會殘留舊 ID 或重複計數。"""
-    global DYNAMIC_DATA_LOADED
-    for inst_id in [i for i in INSTITUTIONS_DB if i not in CURATED_SAMPLE_IDS]:
-        NAME_TO_ID.pop(INSTITUTIONS_DB[inst_id]["name"], None)
-        del INSTITUTIONS_DB[inst_id]
-    DYNAMIC_DATA_LOADED = False
-
-
-def _load_dynamic_institutions(source_dir: Optional[Path] = None):
-    """載入全市機構評分。
-
-    Args:
-        source_dir: 放置 risk_scores_latest.csv / penalties_all.csv / preschools.json
-            的目錄。省略時使用 repo 內的 ml/data/processed（本機開發）；
-            Lambda 上沒有 ml/，改由 main.py 的 lifespan 從 S3 下載後傳入。
-    """
+def _load_dynamic_institutions():
+    """Dynamically loads full 1,211 institutions from risk_scores_latest.csv & preschools.json."""
     base_dir = Path(__file__).resolve().parents[2]
-    src = Path(source_dir) if source_dir else base_dir / "ml" / "data" / "processed"
-    scores_path = src / "risk_scores_latest.csv"
-    penalties_path = src / "penalties_all.csv"
-    # preschools.json 可能在來源目錄（S3 下載）或本機 pipeline 快取
-    preschools_cache = src / "preschools.json"
-    if not preschools_cache.exists():
-        preschools_cache = Path.home() / ".cache" / "ntpc_hackathon" / "preschools.json"
+    scores_path = base_dir / "ml" / "data" / "processed" / "risk_scores_latest.csv"
+    penalties_path = base_dir / "ml" / "data" / "processed" / "penalties_all.csv"
+    preschools_cache = Path.home() / ".cache" / "ntpc_hackathon" / "preschools.json"
 
     if not scores_path.exists():
-        logger.info("risk_scores_latest.csv not found in %s, keeping curated focus institutions.", src)
+        logger.info("risk_scores_latest.csv not found, keeping 14 curated focus institutions.")
         return
 
     # Load penalties by institution name
@@ -657,17 +652,9 @@ def _load_dynamic_institutions(source_dir: Optional[Path] = None):
                 raw_grp = row.get("group", "私立")
                 peer_group = _normalize_group(raw_grp)
                 risk_prob = float(row.get("risk_probability", 0.0) or 0.0)
+                score = round(risk_prob * 100, 1)
 
-                # 分數用百分位而非校準機率：機率的量級由基準裁罰率決定（中位數僅 0.09），
-                # 直接乘 100 會讓全市沒有任何一園達到高風險門檻，色階完全失效。
-                # 百分位是模型的定位——排序與預警工具——也對得上下面兩個名單門檻。
-                percentile = float(row.get("percentile", 0.0) or 0.0)
-                score = round(percentile * 100, 1)
-
-                # 等級直接採用模型自己的兩個操作門檻，不另行推導
-                priority = str(row.get("priority_flag", "")).strip().lower() in ("true", "1")
-                screen = str(row.get("screen_flag", "")).strip().lower() in ("true", "1")
-                risk_level = "high" if priority else ("medium" if screen else "low")
+                risk_level = "high" if score >= 60 else ("medium" if score >= 30 else "low")
                 pen_list = penalties_by_name.get(inst_name, [])
                 geo_info = geo_by_name.get(inst_name, {})
 
@@ -684,36 +671,22 @@ def _load_dynamic_institutions(source_dir: Optional[Path] = None):
                 }
 
                 shap_list = []
+                flags_list = []
                 for factor in top_factors:
+                    zh = factor_zh_map.get(factor, factor)
                     shap_list.append({
                         "feature": factor,
-                        "label_zh": factor_zh_map.get(factor, factor),
+                        "label_zh": zh,
                         "contribution": 0.20,
                         "value": "模型顯著特徵",
                     })
-
-                # flags 只餵給附件七報表，必須是風險項目目錄裡的「風險項目」，
-                # 不能拿模型特徵名稱充當代碼——那會對不到目錄而讓每一列都退化成泛用文字。
-                # 模型特徵屬於佐證，留在 shap_breakdown。
-                factor_note = "、".join(
-                    factor_zh_map.get(f, f) for f in top_factors
-                ) or "名冊屬性綜合研判"
-                if pen_list:
-                    flags_list = [{
-                        "code": "PENALTY_RECIDIVISM",
-                        "title": "歷史裁罰再犯風險",
-                        "description": f"近年累計 {len(pen_list)} 件裁罰紀錄；模型主要預警因素：{factor_note}",
-                        "weight": round(min(0.9, 0.3 + 0.15 * len(pen_list)), 2),
-                        "source_ref": "全國教保資訊網裁罰紀錄",
-                    }]
-                else:
-                    flags_list = [{
-                        "code": "MODEL_SCREENING",
-                        "title": "模型預警：預測隔年受裁罰機率偏高",
-                        "description": f"尚無裁罰紀錄；模型主要預警因素：{factor_note}",
-                        "weight": round(risk_prob, 2),
-                        "source_ref": "全國教保資訊網名冊",
-                    }]
+                    flags_list.append({
+                        "code": factor.upper(),
+                        "title": zh,
+                        "description": f"主模型預警特徵指標：{zh}",
+                        "weight": 0.25,
+                        "source_ref": "教保資訊網名冊與裁罰紀錄",
+                    })
 
                 INSTITUTIONS_DB[gen_id] = {
                     "id": gen_id,
@@ -746,35 +719,13 @@ def _load_dynamic_institutions(source_dir: Optional[Path] = None):
                 }
                 NAME_TO_ID[inst_name] = gen_id
 
-        global DYNAMIC_DATA_LOADED
-        DYNAMIC_DATA_LOADED = True
-        logger.info(
-            "Ingested %d institutions from pipeline output; %d curated sample records "
-            "kept for demo routes but excluded from listings.",
-            len(INSTITUTIONS_DB) - len(CURATED_SAMPLE_IDS),
-            len(CURATED_SAMPLE_IDS),
-        )
+        logger.info("Successfully ingested %d total institutions into database.", len(INSTITUTIONS_DB))
     except Exception as e:
         logger.error("Failed to dynamically ingest institutions: %s", e)
 
 
-def reload_from(source_dir: Path) -> bool:
-    """以指定目錄的評分檔重新載入全市機構，回傳是否成功切換為真實資料。
-
-    供 Lambda 冷啟動時從 S3 取得檔案後呼叫；重複呼叫安全。
-    """
-    _reset_dynamic_institutions()
-    _load_dynamic_institutions(source_dir)
-    return DYNAMIC_DATA_LOADED
-
-
-# Initialize from the repo checkout on import (本機開發路徑)
+# Initialize full dataset on module import
 _load_dynamic_institutions()
-
-
-def _is_excluded_sample(inst_id: str) -> bool:
-    """真實資料在線時，手寫示範機構不得出現在清單、排名與全市統計中。"""
-    return DYNAMIC_DATA_LOADED and inst_id in CURATED_SAMPLE_IDS
 
 
 def get_all_institutions(peer_group: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -782,16 +733,8 @@ def get_all_institutions(peer_group: Optional[str] = None) -> List[Dict[str, Any
     items = []
     norm_filter = _normalize_group(peer_group) if peer_group and peer_group != "all" else None
     for inst in INSTITUTIONS_DB.values():
-        if _is_excluded_sample(inst["id"]):
-            continue
         if norm_filter and inst["peer_group"] != norm_filter:
             continue
-        # 權重最高的旗標作為代表性風險項目；前端據 code 分類，不必再比對中文字串
-        primary = max(
-            inst.get("flags") or [],
-            key=lambda f: f.get("weight", 0.0),
-            default=None,
-        )
         items.append({
             "id": inst["id"],
             "name": inst["name"],
@@ -802,9 +745,6 @@ def get_all_institutions(peer_group: Optional[str] = None) -> List[Dict[str, Any
             "latitude": inst["latitude"],
             "longitude": inst["longitude"],
             "address": inst["address"],
-            "district": inst.get("district"),
-            "primary_flag": primary["title"] if primary else None,
-            "primary_flag_code": primary["code"] if primary else None,
         })
     return items
 
@@ -843,8 +783,6 @@ def get_rankings(
     norm_filter = _normalize_group(peer_group) if peer_group and peer_group != "all" else None
 
     for inst in INSTITUTIONS_DB.values():
-        if _is_excluded_sample(inst["id"]):
-            continue
         if norm_filter and inst["peer_group"] != norm_filter:
             continue
 

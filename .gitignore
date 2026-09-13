@@ -42,6 +42,3 @@ dataset.zip
 
 # 部署時暫時寫入的前端建置變數（deploy_web.py 會自行刪除）
 web/.env.production.local
-
-# AWS CLI installer scratch
-aws/
