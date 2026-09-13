@@ -14,11 +14,11 @@ aws:
 
 model:
   weights:
-    penalty: 0.45
+    penalty: 0.40
     residual: 0.20
     isolation_forest: 0.15
     opinion: 0.10
-    flags: 0.10
+    flags: 0.15
   peer_groups:
     - 市立幼兒園
     - 非營利園
