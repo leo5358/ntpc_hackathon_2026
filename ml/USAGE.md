@@ -8,12 +8,28 @@
 
 ```bash
 python3 -m venv ~/.venvs/ntpc
-~/.venvs/ntpc/bin/pip install numpy pandas scikit-learn xgboost-cpu   # 只用最終模型，這樣就夠
+~/.venvs/ntpc/bin/pip install boto3 numpy pandas scikit-learn xgboost-cpu   # 只用最終模型，這樣就夠
 source ~/.venvs/ntpc/bin/activate
 cd ~/2609Hackathon/ntpc_hackthon_2026/ml
-# dataset.zip 放在 repo 的上一層即可；放在別處時：
-export DATASET_ZIP=/path/to/dataset.zip
+# 預設由私有 S3 下載 s3://demo-20260912/E_教育局-資料集.zip
+# 若改用本機 ZIP，才設定：export DATASET_ZIP=/path/to/dataset.zip
 ```
+
+Windows PowerShell 可在 repo 根目錄執行：
+
+```powershell
+$env:DATASET_S3_URI = "s3://demo-20260912/E_教育局-資料集.zip"
+# 已設定具名 AWS profile 時使用；若用環境憑證或 IAM role，省略這行。
+$env:AWS_PROFILE = "workshop"
+cd ml
+python -m pipeline.dataset  # 下載並檢查 ZIP，可先獨立驗證 S3 存取
+```
+
+憑證需要對該物件的 `s3:GetObject` 權限；若物件以自訂 KMS key 加密，另需相應解密權限。憑證由 boto3 的標準 AWS 憑證鏈讀取，不放入前端或 repo。區域可用 `AWS_DEFAULT_REGION` 設定。
+
+資料來源優先順序：明確設定的 `DATASET_ZIP` → 明確設定的 `DATASET_S3_URI` → 自動找到的本機 ZIP → 預設 S3。第一次下載後會重用 `~/.cache/ntpc_hackathon/datasets/` 中的 ZIP，不會每次重新下載。同一 S3 key 更新後，請換用新的 `CACHE_DIR` 並重新啟動 pipeline，避免沿用舊 ZIP 與 OCR／解壓快取。
+
+最終模型雖不用財務特徵，現有 `s3_penalties` 仍從 ZIP 的財報檔名建立非營利園名冊，因此仍需這份資料集。
 
 ## 2. 產生模型與分數（幾分鐘，需要網路）
 

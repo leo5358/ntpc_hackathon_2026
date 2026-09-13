@@ -4,7 +4,8 @@ import zipfile
 from functools import lru_cache
 from pathlib import Path
 
-from .config import DATASET_ZIP, RAW_DIR
+from .config import RAW_DIR
+from .dataset import dataset_path
 
 
 def _decode(info: zipfile.ZipInfo) -> str:
@@ -19,7 +20,7 @@ def _decode(info: zipfile.ZipInfo) -> str:
 @lru_cache(maxsize=1)
 def members() -> dict[str, zipfile.ZipInfo]:
     """Decoded archive path -> ZipInfo, files only."""
-    with zipfile.ZipFile(DATASET_ZIP) as zf:
+    with zipfile.ZipFile(dataset_path()) as zf:
         return {_decode(i): i for i in zf.infolist() if not i.is_dir()}
 
 
@@ -29,7 +30,7 @@ def extract(member: str) -> Path:
     if not target.exists():
         RAW_DIR.mkdir(parents=True, exist_ok=True)
         partial = target.with_suffix(".part")
-        with zipfile.ZipFile(DATASET_ZIP) as zf, zf.open(members()[member]) as src, open(partial, "wb") as dst:
+        with zipfile.ZipFile(dataset_path()) as zf, zf.open(members()[member]) as src, open(partial, "wb") as dst:
             shutil.copyfileobj(src, dst)
         partial.rename(target)
     return target
