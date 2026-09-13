@@ -605,16 +605,30 @@ def _normalize_group(grp: str) -> str:
     return grp
 
 
-def _load_dynamic_institutions():
+def _reset_dynamic_institutions():
+    """Clear dynamically ingested institutions while preserving the 14 curated ones."""
+    global INSTITUTIONS_DB, NAME_TO_ID
+    for k in list(INSTITUTIONS_DB.keys()):
+        if k.startswith("K"):
+            del INSTITUTIONS_DB[k]
+    NAME_TO_ID = {inst["name"]: inst_id for inst_id, inst in INSTITUTIONS_DB.items()}
+
+
+def _load_dynamic_institutions(source_dir: Optional[Path] = None) -> bool:
     """Dynamically loads full 1,211 institutions from risk_scores_latest.csv & preschools.json."""
-    base_dir = Path(__file__).resolve().parents[2]
-    scores_path = base_dir / "ml" / "data" / "processed" / "risk_scores_latest.csv"
-    penalties_path = base_dir / "ml" / "data" / "processed" / "penalties_all.csv"
-    preschools_cache = Path.home() / ".cache" / "ntpc_hackathon" / "preschools.json"
+    if source_dir:
+        scores_path = source_dir / "risk_scores_latest.csv"
+        penalties_path = source_dir / "penalties_all.csv"
+        preschools_cache = source_dir / "preschools.json"
+    else:
+        base_dir = Path(__file__).resolve().parents[2]
+        scores_path = base_dir / "ml" / "data" / "processed" / "risk_scores_latest.csv"
+        penalties_path = base_dir / "ml" / "data" / "processed" / "penalties_all.csv"
+        preschools_cache = Path.home() / ".cache" / "ntpc_hackathon" / "preschools.json"
 
     if not scores_path.exists():
         logger.info("risk_scores_latest.csv not found, keeping 14 curated focus institutions.")
-        return
+        return False
 
     # Load penalties by institution name
     penalties_by_name: Dict[str, List[Dict[str, Any]]] = {}
@@ -753,12 +767,23 @@ def _load_dynamic_institutions():
                 NAME_TO_ID[inst_name] = gen_id
 
         logger.info("Successfully ingested %d total institutions into database.", len(INSTITUTIONS_DB))
+        return True
     except Exception as e:
         logger.error("Failed to dynamically ingest institutions: %s", e)
+        return False
 
 
 # Initialize full dataset on module import
 _load_dynamic_institutions()
+
+
+def reload_from(source_dir: Path) -> bool:
+    """以指定目錄的評分檔重新載入全市機構，回傳是否成功。
+
+    供 Lambda 冷啟動時從 S3 取得檔案後呼叫；重複呼叫安全。
+    """
+    _reset_dynamic_institutions()
+    return _load_dynamic_institutions(source_dir)
 
 
 def get_all_institutions(peer_group: Optional[str] = None) -> List[Dict[str, Any]]:

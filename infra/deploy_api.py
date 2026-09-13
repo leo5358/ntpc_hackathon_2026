@@ -219,6 +219,10 @@ def deploy_function(session, function_name: str, role_arn: str, zip_path: Path, 
             "BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0"
         ),
     }
+    if scores_bucket := os.getenv("SCORES_BUCKET"):
+        env_vars["SCORES_BUCKET"] = scores_bucket
+    if scores_prefix := os.getenv("SCORES_PREFIX"):
+        env_vars["SCORES_PREFIX"] = scores_prefix
 
     try:
         lam.get_function(FunctionName=function_name)

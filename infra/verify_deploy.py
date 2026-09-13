@@ -81,7 +81,16 @@ def main():
             continue
         status = payload.get("statusCode")
         if status == 200:
-            print(f"  PASS  {method} {path}")
+            if path == "/api/institutions":
+                try:
+                    count = len(json.loads(payload.get("body", "[]")))
+                    print(f"  PASS  {method} {path} （共載入 {count} 所機構）")
+                    if count < 1000:
+                        print(f"  WARN  {method} {path} 機構數量僅 {count} 所（未達 1000 所）")
+                except Exception:
+                    print(f"  PASS  {method} {path}")
+            else:
+                print(f"  PASS  {method} {path}")
         else:
             print(f"  FAIL  {method} {path} — HTTP {status}：{str(payload.get('body'))[:160]}")
             failures.append(path)

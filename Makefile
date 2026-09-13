@@ -14,6 +14,7 @@ help:
 	@echo "  make build-frontend      - Build static frontend assets"
 	@echo "  make test-opinion-crawler - Run end-to-end opinion crawler & Bedrock test"
 	@echo "  make smoke-backend       - Offline endpoint smoke tests (no AWS needed)"
+	@echo "  make upload-scores       - Upload model score files to private S3 (needed before deploy)"
 	@echo "  make deploy-api          - Deploy backend to Lambda + API Gateway"
 	@echo "  make deploy-web          - Deploy frontend to S3 + CloudFront (needs API_URL)"
 	@echo "  make deploy              - Deploy backend then frontend"
@@ -50,6 +51,17 @@ STAGE ?= dev
 
 smoke-backend:
 	$(PYTHON) -m infra.smoke_local
+
+# 模型評分檔不進 repo、也不打包進 Lambda，改由私有 S3 於冷啟動取得。
+# 執行本指令將評分檔上傳至 S3，再執行 make deploy-api。
+SCORES_BUCKET ?= $(shell $(PYTHON) -c "import yaml;print(yaml.safe_load(open('config.yaml'))['aws']['bucket_name'])" 2>/dev/null)
+SCORES_PREFIX ?= scores
+
+upload-scores:
+	@test -n "$(SCORES_BUCKET)" || (echo "SCORES_BUCKET 未設定（config.yaml 的 aws.bucket_name 或環境變數）"; exit 1)
+	@test -f ml/data/processed/risk_scores_latest.csv || (echo "缺 ml/data/processed/risk_scores_latest.csv，請先產生"; exit 1)
+	$(PYTHON) -c "import boto3, os, yaml; s=boto3.Session(); cfg=yaml.safe_load(open('config.yaml')); b='$(SCORES_BUCKET)'; p='$(SCORES_PREFIX)'; s3=s.client('s3'); [s3.upload_file(src, b, f'{p}/{dst}') for src, dst in [('ml/data/processed/risk_scores_latest.csv', 'risk_scores_latest.csv'), ('ml/data/processed/penalties_all.csv', 'penalties_all.csv')]]; os.path.exists(os.path.expanduser('~/.cache/ntpc_hackathon/preschools.json')) and s3.upload_file(os.path.expanduser('~/.cache/ntpc_hackathon/preschools.json'), b, f'{p}/preschools.json')"
+	@echo "已上傳至 s3://$(SCORES_BUCKET)/$(SCORES_PREFIX)/"
 
 deploy-api:
 	$(PYTHON) -m infra.deploy_api --stage $(STAGE) --output-url-file .api_url
