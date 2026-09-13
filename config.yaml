@@ -1,10 +1,8 @@
 aws:
   region: us-west-2
   profile_name: workshop
-  # 模型評分檔的來源（api/services/score_cache.py 於冷啟動下載）。
-  # 此 bucket 公開存取全封鎖，符合 NOTICE.md 對衍生資料只在私有 S3 流通的要求。
-  # 可用環境變數 SCORES_BUCKET 覆寫。
-  bucket_name: demo-20260912
+  bucket_name: kiro-workshop-default
+  execution_role_arn: arn:aws:iam::123456789012:role/kiro-sagemaker-execution-role
   s3_prefixes:
     raw: raw/
     curated: curated/

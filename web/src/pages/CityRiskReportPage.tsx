@@ -10,9 +10,8 @@ import {
 } from "lucide-react";
 
 import { api } from "../services/api";
-import { SAMPLE_MAP_DATA, getRiskLevel, KindergartenMapPoint, RISK_BANDS } from "../data/institutions";
+import { SAMPLE_MAP_DATA, getRiskLevel, KindergartenMapPoint } from "../data/institutions";
 import { computeCityStats, CityStats, HighRiskProfile } from "../services/cityReport";
-import { loadInstitutions } from "../services/institutions";
 import type {
   CityNarrativeResponse,
   HealthResponse,
@@ -21,9 +20,6 @@ import type {
 } from "../types/api";
 
 const ACADEMIC_YEARS = [112, 111, 110];
-
-/** 柒章逐所展開的上限；其餘高風險機構列於玖章附錄 */
-const DETAILED_PROFILE_LIMIT = 20;
 
 /** 單一色相供量值比較使用（與品牌藍一致）；狀態色僅用於風險等級，且一律併同文字標籤 */
 const SERIES_HUE = "#2563eb";
@@ -178,11 +174,7 @@ const CityRiskImage: React.FC<{ stats: CityStats }> = ({ stats }) => {
           <div>影響程度(I)</div>
           <div className="text-right">可能性(L)</div>
         </div>
-        {[
-          `幾乎不可能（1）<${RISK_BANDS.medium}分`,
-          `可能（2）${RISK_BANDS.medium}–${RISK_BANDS.high - 1}分`,
-          `幾乎確定（3）≥${RISK_BANDS.high}分`,
-        ].map((label) => (
+        {["幾乎不可能（1）<30分", "可能（2）30–59分", "幾乎確定（3）≥60分"].map((label) => (
           <div
             key={label}
             className="flex-1 border-r border-slate-400 last:border-r-0 bg-slate-50 py-2 text-center text-[11px] font-medium text-slate-700"
@@ -208,8 +200,7 @@ export const CityRiskReportPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [schools, setSchools] = useState<KindergartenMapPoint[]>(SAMPLE_MAP_DATA);
-  const [isFallbackData, setIsFallbackData] = useState(false);
+  const schools: KindergartenMapPoint[] = SAMPLE_MAP_DATA;
   const [gradeByInstId, setGradeByInstId] = useState<Record<string, RiskGrade>>({});
   const stats = useMemo(
     () => computeCityStats(schools, gradeByInstId),
@@ -268,52 +259,37 @@ export const CityRiskReportPage: React.FC = () => {
       setNarrative(null);
     }
 
-    // 高風險園的附件7 列。全市 1,200 園時高風險可達上百所，
-    // 逐所發請求會產生上百個往返，改以批次端點一次取回。
+    // 高風險園的附件7 列
     try {
-      const res = await api.postRiskReportBatch({
-        reports: stats.highRisk.slice(0, DETAILED_PROFILE_LIMIT).map((profile) => ({
-          inst_id: profile.school.id,
-          inst_name: profile.school.name,
-          peer_group: profile.school.peer_group,
-          district: profile.school.district,
-          academic_year: academicYear,
-          roc_year: rocYear,
-          composite_score: profile.school.latest_score,
-          signals: [
-            {
-              code: profile.school.primary_flag_code,
-              primary_flag: profile.school.primary_flag,
-              composite_score: profile.school.latest_score,
-              penalty_count: profile.school.penalty_count,
-              detail: `綜合風險分數 ${profile.school.latest_score} 分，歷史裁罰 ${profile.school.penalty_count} 件`,
-            },
-          ],
-        })),
-      });
-      setAttachmentRows(
-        Object.fromEntries(res.reports.map((r) => [r.meta.inst_id, r.rows]))
+      const entries = await Promise.all(
+        stats.highRisk.map(async (profile) => {
+          const report = await api.postRiskReport({
+            inst_id: profile.school.id,
+            inst_name: profile.school.name,
+            peer_group: profile.school.peer_group,
+            district: profile.school.district,
+            academic_year: academicYear,
+            roc_year: rocYear,
+            composite_score: profile.school.latest_score,
+            signals: [
+              {
+                primary_flag: profile.school.primary_flag,
+                composite_score: profile.school.latest_score,
+                penalty_count: profile.school.penalty_count,
+                detail: `綜合風險分數 ${profile.school.latest_score} 分，歷史裁罰 ${profile.school.penalty_count} 件`,
+              },
+            ],
+          });
+          return [profile.school.id, report.rows] as const;
+        })
       );
+      setAttachmentRows(Object.fromEntries(entries));
     } catch {
       setAttachmentRows({});
     }
 
     setLoading(false);
   }, [academicYear, rocYear, stats, useBedrock]);
-
-  // 全市資料與地圖頁同一來源，避免「全市報告」只涵蓋離線備援的少數機構
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const { schools: loaded, isFallback } = await loadInstitutions();
-      if (!active) return;
-      setSchools(loaded);
-      setIsFallbackData(isFallback);
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   // 附件4 落點等級一律向後端索取，與附件7 各列共用同一套換算
   useEffect(() => {
@@ -323,7 +299,6 @@ export const CityRiskReportPage: React.FC = () => {
         const res = await api.postSchoolGrades({
           schools: schools.map((s) => ({
             inst_id: s.id,
-            code: s.primary_flag_code,
             primary_flag: s.primary_flag,
             composite_score: s.latest_score,
             penalty_count: s.penalty_count,
@@ -528,9 +503,7 @@ export const CityRiskReportPage: React.FC = () => {
         <section className="space-y-3 break-inside-avoid">
           <h2 className="text-base font-bold text-slate-900">貳、評估範圍與資料可信度</h2>
           <p className="text-xs text-slate-600 leading-relaxed">
-            本報告納入 {stats.total} 所幼兒園
-            {isFallbackData ? "（機構清單服務無回應，目前使用離線備援樣本，不代表全市）" : ""}
-            。資料來源包含地方教育發展基金決算書、全國教保資訊網裁罰與名冊鏡像資料，以及公開新聞與社群輿情。
+            本報告資料來源包含地方教育發展基金決算書、全國教保資訊網裁罰與名冊鏡像資料，以及公開新聞與社群輿情。
             風險分數為 0–100 分之相對指標；最終上線模型以裁罰歷史與園所名冊屬性預測隔年受裁罰機率，
             預決算殘差與輿情訊號經實測後與隔年裁罰無顯著關聯，未納入最終評分（詳見捌章）。
           </p>
@@ -655,9 +628,8 @@ export const CityRiskReportPage: React.FC = () => {
         <section className="space-y-3 break-inside-avoid">
           <h2 className="text-base font-bold text-slate-900">肆、全市風險圖像</h2>
           <p className="text-xs text-slate-600 leading-relaxed">
-            依教育部風險管理推動作業原則附件四繪製。可能性(L) 由全市風險百分位換算（≥{RISK_BANDS.high} 為 3、
-            {RISK_BANDS.medium}–{RISK_BANDS.high - 1} 為 2、&lt;{RISK_BANDS.medium} 為 1）；
-            影響程度(I) 取自該園主要風險項目於附件二之影響程度基準（如不當管教、餐食衛生、
+            依教育部風險管理推動作業原則附件四繪製。可能性(L) 由 0–100 風險分數換算（≥60 為 3、30–59 為 2、
+            &lt;30 為 1）；影響程度(I) 取自該園主要風險項目於附件二之影響程度基準（如不當管教、餐食衛生、
             設施安全為 3），並於歷史裁罰 ≥2 件時上調一級；風險值 R = L × I，R ≤ 4 為可容忍風險。
             本圖落點與柒章各園附件七之「現有風險等級」為同一套換算結果。
           </p>
@@ -740,17 +712,11 @@ export const CityRiskReportPage: React.FC = () => {
           <div className="border-b border-slate-300 pb-2">
             <h2 className="text-lg font-bold text-slate-900">柒、高風險機構專案報告</h2>
             <p className="text-xs text-slate-600 mt-1">
-              納入標準：風險百分位 ≥ {RISK_BANDS.high}（模型優先稽查名單），共 {stats.highRisk.length} 所
-              {stats.highRisk.length > DETAILED_PROFILE_LIMIT
-                ? `，本章依分數高低逐所展開前 ${DETAILED_PROFILE_LIMIT} 所，其餘 ${
-                    stats.highRisk.length - DETAILED_PROFILE_LIMIT
-                  } 所之評分與旗標見玖章附錄`
-                : ""}
-              。每節可獨立列印供承辦科室使用。
+              納入標準：綜合風險分數 ≥ 60 分，共 {stats.highRisk.length} 所。每節可獨立列印供承辦科室使用。
             </p>
           </div>
 
-          {stats.highRisk.slice(0, DETAILED_PROFILE_LIMIT).map((profile) => (
+          {stats.highRisk.map((profile) => (
             <HighRiskSection
               key={profile.school.id}
               profile={profile}
@@ -811,9 +777,7 @@ export const CityRiskReportPage: React.FC = () => {
 
         {/* 附錄 */}
         <section className="space-y-2">
-          <h2 className="text-base font-bold text-slate-900">
-            玖、附錄：全機構風險評分明細（共 {stats.total} 所）
-          </h2>
+          <h2 className="text-base font-bold text-slate-900">玖、附錄：全機構風險評分明細</h2>
           <div className="overflow-x-auto">
             <table className="min-w-[720px] w-full border-collapse text-xs">
               <thead className="bg-slate-100">
