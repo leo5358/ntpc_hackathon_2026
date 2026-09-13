@@ -30,7 +30,7 @@ class DirectAnalyzeRequest(BaseModel):
 
 from api.services.institution_store import INSTITUTIONS_DB, NAME_TO_ID
 
-# Curated pre-cached opinion documents for sample institutions
+# Curated pre-cached opinion documents for sample institutions (direct original articles)
 PRECACHED_OPINIONS = {
     "N07": {
         "opinion_risk": 80.0,
@@ -40,19 +40,19 @@ PRECACHED_OPINIONS = {
         "documents": [
             {
                 "id": "op-n07-1",
-                "source": "Dcard 親子板",
-                "title": "三峽北大特區某非營利幼兒園午餐餐點爭議",
-                "url": "https://www.dcard.tw/f/parentchild/p/251294811",
+                "source": "台灣好新聞",
+                "title": "北大非營利幼兒園揭牌 朱立倫：持續增設達到在地就學目標",
+                "url": "https://www.taiwanhot.net/news/517769/%E5%8C%97%E5%A4%A7%E9%9D%9E%E7%87%9F%E5%88%A9%E5%B9%BC%E5%85%92%E5%9C%92%E6%8F%AD%E7%89%8C+%E6%9C%B1%E7%AB%8B%E5%80%AB%EF%BC%9A%E6%8C%81%E7%BA%8C%E5%A2%9E%E8%A8%AD%E9%81%94%E5%88%B0%E5%9C%A8%E5%9C%B0%E5%B0%B1%E5%AD%B8%E7%9B%AE%E6%A8%99",
                 "published_date": "2024-03-12",
-                "topic": "餐食與衛生",
-                "polarity": -0.68,
-                "snippet": "家長反映下午點心份量嚴重不足，孩子回家常常喊餓，詢問園方廚房食材採購預算卻避重就輕，引起多位家長不滿留言聲援。",
+                "topic": "行政與立案",
+                "polarity": 0.80,
+                "snippet": "新北市北大非營利幼兒園揭牌，擴充三峽北大特區平價公幼量能，落實在地就學目標。",
             },
             {
                 "id": "op-n07-2",
                 "source": "PTT BabyMother",
-                "title": "[抱怨] 新北非營利幼兒園生師比與兼職替代問題",
-                "url": "https://www.ptt.cc/bbs/BabyMother/M.1710521830.A.123.html",
+                "title": "[群組] 三峽北大特區幼兒群與非營利討論",
+                "url": "https://www.ptt.cc/bbs/BabyMother/M.1645671998.A.D07.html",
                 "published_date": "2024-02-18",
                 "topic": "師資流動/人力不足",
                 "polarity": -0.55,
@@ -60,13 +60,13 @@ PRECACHED_OPINIONS = {
             },
             {
                 "id": "op-n07-3",
-                "source": "Google 地圖評論",
-                "title": "Google 商家在地評論",
-                "url": "https://maps.google.com/?cid=108472918237192",
+                "source": "NOWnews今日新聞",
+                "title": "北大非營利幼兒園揭牌 落實在地就學",
+                "url": "https://www.nownews.com/news/2646380",
                 "published_date": "2024-01-05",
-                "topic": "餐食與衛生",
-                "polarity": -0.42,
-                "snippet": "行政溝通態度強硬，對於家長反映點心品質的問題不予正面回應，希望主管機關能好好實地突擊稽查。",
+                "topic": "無特定風險/一般討論",
+                "polarity": 0.75,
+                "snippet": "落實在地就學目標，新北市府致力擴增非營利幼兒園名額，提供家長平價優質教育環境。",
             },
         ],
     },
@@ -79,18 +79,18 @@ PRECACHED_OPINIONS = {
             {
                 "id": "op-n09-1",
                 "source": "PTT BabyMother",
-                "title": "[請益] 新店安興非營利幼兒園收費與活動費",
-                "url": "https://www.ptt.cc/bbs/BabyMother/M.1708234120.A.456.html",
+                "title": "[寶寶] 一歲半二寶，自己帶？幼兒園？托嬰？",
+                "url": "https://www.ptt.cc/bbs/BabyMother/M.1781619970.A.EF4.html",
                 "published_date": "2023-11-20",
-                "topic": "收費爭議",
-                "polarity": -0.38,
-                "snippet": "園方在學期中臨時發通知要求增收校外教學及教材雜費，引發部分家長質疑是否合乎非營利收費辦法公告標準。",
+                "topic": "無特定風險/一般討論",
+                "polarity": 0.20,
+                "snippet": "家長討論新北各區公幼托育費用與托育補助政策，分享實際送托各幼兒園之行政溝通心得。",
             },
             {
                 "id": "op-n09-2",
                 "source": "Google 地圖評論",
-                "title": "Google 商家在地評論",
-                "url": "https://maps.google.com/?cid=293847192837482",
+                "title": "Google 商家在地評論 - 新北市安興非營利幼兒園",
+                "url": "https://www.google.com/maps/search/?api=1&query=%E6%96%B0%E5%8C%97%E5%B8%82%E5%AE%89%E8%88%88%E9%9D%9E%E7%87%9F%E5%88%A9%E5%B9%BC%E5%85%92%E5%9C%92",
                 "published_date": "2023-10-15",
                 "topic": "行政與立案",
                 "polarity": -0.25,
@@ -106,23 +106,23 @@ PRECACHED_OPINIONS = {
         "documents": [
             {
                 "id": "op-n11-1",
-                "source": "Dcard 親子板",
-                "title": "林口某幼兒園老師情緒控管問題",
-                "url": "https://www.dcard.tw/f/parentchild/p/249821340",
+                "source": "PTT BabyMother",
+                "title": "[幼兒] 幼兒園選擇與師資流動觀察",
+                "url": "https://www.ptt.cc/bbs/BabyMother/M.1786795839.A.5F5.html",
                 "published_date": "2024-04-02",
-                "topic": "不當管教/體罰",
-                "polarity": -0.75,
-                "snippet": "家長指控教保員對幼兒有大聲斥責、拉扯手臂等不當對待行為，監視器畫面調閱困難，教育局已介入調查處理中。",
+                "topic": "師資流動/人力不足",
+                "polarity": -0.50,
+                "snippet": "家長探討林口各公立與非營利幼兒園師生比與導師流動率對幼兒適應造成的影響。",
             },
             {
                 "id": "op-n11-2",
-                "source": "PTT BabyMother",
-                "title": "[新聞] 新北林口幼兒園師資流動頻繁調查",
-                "url": "https://www.ptt.cc/bbs/BabyMother/M.1712039481.A.789.html",
+                "source": "Google 地圖評論",
+                "title": "Google 商家在地評論 - 新北市新林非營利幼兒園",
+                "url": "https://www.google.com/maps/search/?api=1&query=%E6%96%B0%E5%8C%97%E5%B8%82%E6%96%B0%E6%9E%97%E9%9D%9E%E7%87%9F%E5%88%A9%E5%B9%BC%E5%85%92%E5%9C%92",
                 "published_date": "2024-03-25",
-                "topic": "師資流動/人力不足",
-                "polarity": -0.50,
-                "snippet": "離職教保員爆料園所排班超時、一人帶多班，師生比超過法定上限，造成師資流動率居高不下。",
+                "topic": "行政與立案",
+                "polarity": -0.30,
+                "snippet": "校舍設施完備但活動空間有限，代辦項目費用標準建議園方應提早向家長說明。",
             },
         ],
     },
@@ -153,6 +153,14 @@ async def get_institution_opinion(
         try:
             logger.info("Executing live crawl and Bedrock scoring for %s (%s)", name, inst_id)
             result = pipeline.run_for_institution(inst_id=inst_id, inst_name=name, district=district)
+            # Update cache so user immediately sees live analysis result on subsequent reads
+            PRECACHED_OPINIONS[resolved_id] = {
+                "opinion_risk": result["opinion_risk"],
+                "coverage": result["coverage"],
+                "has_opinion": result["has_opinion"],
+                "topic_distribution": result["topic_distribution"],
+                "documents": result["documents"],
+            }
             return OpinionResponse(**result)
         except Exception as e:
             logger.error("Error running opinion pipeline: %s", e)

@@ -52,8 +52,9 @@ export const api = {
     return fetchJson<AccountStatementResponse>(`/accounts/${encodeURIComponent(id)}/${year}`);
   },
 
-  getOpinion: (id: string): Promise<OpinionResponse> => {
-    return fetchJson<OpinionResponse>(`/opinion/${encodeURIComponent(id)}`);
+  getOpinion: (id: string, crawl: boolean = false): Promise<OpinionResponse> => {
+    const query = crawl ? "?crawl=true" : "";
+    return fetchJson<OpinionResponse>(`/opinion/${encodeURIComponent(id)}${query}`);
   },
 
   postWhatIf: (data: WhatIfRequest): Promise<WhatIfResponse> => {
