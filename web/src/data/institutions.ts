@@ -8,7 +8,7 @@
 export interface KindergartenMapPoint {
   id: string;
   name: string;
-  peer_group: "市立幼兒園" | "非營利園";
+  peer_group: "市立幼兒園" | "非營利園" | string;
   latest_score: number;
   latitude: number;
   longitude: number;
