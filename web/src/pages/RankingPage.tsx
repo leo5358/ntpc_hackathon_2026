@@ -340,21 +340,20 @@ export const RankingPage: React.FC = () => {
                       </td>
 
                       {/* Opinion */}
-                      <td className="py-4 px-4 text-center">
+                      <td className="py-4 px-4 text-center whitespace-nowrap">
                         {item.has_opinion ? (
                           <button
                             onClick={() => handleOpenOpinion(item)}
-                            className="inline-flex items-center space-x-1 px-2 py-1 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition shadow-xs cursor-pointer group"
-                            title="點擊查看該園所輿情摘要與原始報導訊息"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-md text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 transition shadow-xs cursor-pointer group"
+                            title="有輿情預警（點擊查看摘要與原始報導）"
                           >
                             <MessageSquare className="w-3.5 h-3.5 text-blue-600 group-hover:scale-110 transition-transform" />
-                            <span>查看輿情</span>
                           </button>
                         ) : (
                           <button
                             onClick={() => handleOpenOpinion(item)}
-                            className="inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
-                            title="查閱輿情狀態"
+                            className="inline-flex items-center justify-center px-1.5 py-0.5 rounded text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                            title="查閱輿情狀態（目前無預警）"
                           >
                             <span className="text-slate-400 text-xs">無預警</span>
                           </button>

@@ -7,6 +7,7 @@ import {
   Sparkles,
   AlertTriangle,
   Info,
+  Search,
 } from "lucide-react";
 
 import { api } from "../services/api";
@@ -157,12 +158,17 @@ const CityRiskImage: React.FC<{ stats: CityStats }> = ({ stats }) => {
                 <div className="text-[11px] font-semibold">
                   風險值(R)={cell.risk_value}　{cell.schools.length} 所
                 </div>
-                <ul className="mt-1 space-y-0.5">
-                  {cell.schools.map((s) => (
-                    <li key={s.id} className="text-[10px] leading-tight">
+                <ul className="mt-1 space-y-0.5 max-h-36 overflow-y-auto">
+                  {cell.schools.slice(0, 8).map((s) => (
+                    <li key={s.id} className="text-[10px] leading-tight truncate" title={`${s.name} (${s.latest_score}分)`}>
                       {s.name.replace("新北市", "")}（{s.latest_score}）
                     </li>
                   ))}
+                  {cell.schools.length > 8 && (
+                    <li className="text-[9px] opacity-75 font-medium pt-0.5">
+                      ...等共 {cell.schools.length} 所
+                    </li>
+                  )}
                 </ul>
               </div>
             );
@@ -200,8 +206,11 @@ export const CityRiskReportPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const schools: KindergartenMapPoint[] = SAMPLE_MAP_DATA;
+  const [schools, setSchools] = useState<KindergartenMapPoint[]>(SAMPLE_MAP_DATA);
   const [gradeByInstId, setGradeByInstId] = useState<Record<string, RiskGrade>>({});
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showAllRows, setShowAllRows] = useState(false);
+
   const stats = useMemo(
     () => computeCityStats(schools, gradeByInstId),
     [schools, gradeByInstId]
@@ -209,48 +218,115 @@ export const CityRiskReportPage: React.FC = () => {
   const rocYear = academicYear + 1;
   const generatedAt = useMemo(() => new Date().toLocaleString("zh-TW"), [narrative]);
 
+  const filteredRanked = useMemo(() => {
+    if (!searchTerm.trim()) return stats.ranked;
+    const q = searchTerm.trim().toLowerCase();
+    return stats.ranked.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.id.toLowerCase().includes(q) ||
+        s.district.toLowerCase().includes(q) ||
+        s.peer_group.toLowerCase().includes(q) ||
+        (s.primary_flag && s.primary_flag.toLowerCase().includes(q))
+    );
+  }, [stats.ranked, searchTerm]);
+
+  const displayedRanked = useMemo(() => {
+    if (showAllRows || searchTerm.trim()) return filteredRanked;
+    return filteredRanked.slice(0, 100);
+  }, [filteredRanked, showAllRows, searchTerm]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    // 資料可信度指標（失敗不阻斷報告產出）。
-    // 必須用區域變數往下傳：setHealth 不會即時更新本次閉包裡的 health，
-    // 直接讀 state 會讓敘述生成永遠收到 undefined。
-    let current: HealthResponse | null = null;
+    // 1. 取得全體機構名單與評分資料（若失敗則回退 SAMPLE_MAP_DATA）
+    let currentSchools = SAMPLE_MAP_DATA;
     try {
-      current = await api.getHealth();
-    } catch {
-      current = null;
+      const data = await api.getInstitutions();
+      if (data && data.length > 0) {
+        currentSchools = data.map((item) => {
+          const fallback = SAMPLE_MAP_DATA.find((s) => s.id === item.id);
+          let dist = fallback?.district;
+          if (!dist && item.address) {
+            const m = item.address.match(/新北市([^\s0-9路街巷弄號]+[區鄉鎮市])/);
+            dist = m ? m[1] : undefined;
+          }
+          return {
+            id: item.id,
+            name: item.name,
+            peer_group: item.peer_group || fallback?.peer_group || "私立幼兒園",
+            latest_score: item.latest_score ?? fallback?.latest_score ?? 0,
+            latitude: item.latitude ?? fallback?.latitude ?? 25.012,
+            longitude: item.longitude ?? fallback?.longitude ?? 121.465,
+            district: dist || "新北市",
+            penalty_count: item.penalty_count ?? fallback?.penalty_count ?? 0,
+            primary_flag: fallback?.primary_flag || (item.penalty_count > 0 ? `歷史處分 ${item.penalty_count} 筆` : "正常"),
+          };
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to fetch institutions from API, using fallback data", err);
     }
-    setHealth(current);
+    setSchools(currentSchools);
 
+    // 2. 資料可信度指標（失敗不阻斷報告產出）
+    let currentHealth: HealthResponse | null = null;
+    try {
+      currentHealth = await api.getHealth();
+    } catch {
+      currentHealth = null;
+    }
+    setHealth(currentHealth);
+
+    // 3. 向後端索取落點等級（附件4 風險圖像）
+    let currentGrades: Record<string, RiskGrade> = {};
+    try {
+      const res = await api.postSchoolGrades({
+        schools: currentSchools.map((s) => ({
+          inst_id: s.id,
+          primary_flag: s.primary_flag,
+          composite_score: s.latest_score,
+          penalty_count: s.penalty_count,
+        })),
+      });
+      currentGrades = Object.fromEntries(res.grades.map((g) => [g.inst_id, g.grade]));
+      setGradeByInstId(currentGrades);
+    } catch {
+      setGradeByInstId({});
+    }
+
+    // 4. 即時以當前完整名單與等級計算全市統計指標
+    const currentStats = computeCityStats(currentSchools, currentGrades);
+
+    // 5. 產製全市敘述（Bedrock 或規則模板）
     try {
       const payload = {
         roc_year: rocYear,
         academic_year: academicYear,
-        total_institutions: stats.total,
-        average_score: stats.averageScore,
-        high_risk_count: stats.levels.find((l) => l.key === "high")?.count ?? 0,
-        medium_risk_count: stats.levels.find((l) => l.key === "medium")?.count ?? 0,
-        low_risk_count: stats.levels.find((l) => l.key === "low")?.count ?? 0,
-        total_penalties: stats.totalPenalties,
-        peer_groups: stats.peerGroups.map((g) => ({
+        total_institutions: currentStats.total,
+        average_score: currentStats.averageScore,
+        high_risk_count: currentStats.levels.find((l) => l.key === "high")?.count ?? 0,
+        medium_risk_count: currentStats.levels.find((l) => l.key === "medium")?.count ?? 0,
+        low_risk_count: currentStats.levels.find((l) => l.key === "low")?.count ?? 0,
+        total_penalties: currentStats.totalPenalties,
+        peer_groups: currentStats.peerGroups.map((g) => ({
           peer_group: g.peer_group,
           count: g.count,
           average_score: g.average_score,
           max_score: g.max_score,
           penalty_count: g.penalty_count,
         })),
-        top_districts: stats.districts.slice(0, 5).map((d) => ({
+        top_districts: currentStats.districts.slice(0, 5).map((d) => ({
           district: d.district,
           count: d.count,
           average_score: d.average_score,
           max_score: d.max_score,
         })),
-        top_flags: stats.flagCategories.flatMap((c) => c.flags).slice(0, 8),
-        high_risk_institutions: stats.highRisk.map((h) => h.school.name),
-        opinion_coverage: current?.opinion_coverage ?? undefined,
-        parser_verified_rate: current?.parser_verified_rate ?? undefined,
+        top_flags: currentStats.flagCategories.flatMap((c) => c.flags).slice(0, 8),
+        high_risk_institutions: currentStats.highRisk.map((h) => h.school.name),
+        opinion_coverage: currentHealth?.opinion_coverage ?? undefined,
+        parser_verified_rate: currentHealth?.parser_verified_rate ?? undefined,
         use_bedrock: useBedrock,
       };
       setNarrative(await api.postCityNarrative(payload));
@@ -259,10 +335,10 @@ export const CityRiskReportPage: React.FC = () => {
       setNarrative(null);
     }
 
-    // 高風險園的附件7 列
+    // 6. 高風險園的附件7 列（以 Promise.allSettled 避免單一失敗阻斷全體）
     try {
-      const entries = await Promise.all(
-        stats.highRisk.map(async (profile) => {
+      const entries = await Promise.allSettled(
+        currentStats.highRisk.map(async (profile) => {
           const report = await api.postRiskReport({
             inst_id: profile.school.id,
             inst_name: profile.school.name,
@@ -283,43 +359,20 @@ export const CityRiskReportPage: React.FC = () => {
           return [profile.school.id, report.rows] as const;
         })
       );
-      setAttachmentRows(Object.fromEntries(entries));
+      const successful = entries
+        .filter((r): r is PromiseFulfilledResult<readonly [string, RiskAssessmentRow[]]> => r.status === "fulfilled")
+        .map((r) => r.value);
+      setAttachmentRows(Object.fromEntries(successful));
     } catch {
       setAttachmentRows({});
     }
 
     setLoading(false);
-  }, [academicYear, rocYear, stats, useBedrock]);
-
-  // 附件4 落點等級一律向後端索取，與附件7 各列共用同一套換算
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const res = await api.postSchoolGrades({
-          schools: schools.map((s) => ({
-            inst_id: s.id,
-            primary_flag: s.primary_flag,
-            composite_score: s.latest_score,
-            penalty_count: s.penalty_count,
-          })),
-        });
-        if (active) {
-          setGradeByInstId(Object.fromEntries(res.grades.map((g) => [g.inst_id, g.grade])));
-        }
-      } catch {
-        if (active) setGradeByInstId({});
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [schools]);
+  }, [academicYear, rocYear, useBedrock]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [academicYear, useBedrock]);
+  }, [load]);
 
   const exportCsv = () => {
     const headers = ["排名", "機構代碼", "機構名稱", "同儕群組", "行政區", "風險分數", "風險等級", "裁罰件數", "主要風險旗標"];
@@ -432,7 +485,7 @@ export const CityRiskReportPage: React.FC = () => {
             新北市政府教育局{rocYear}年幼兒園風險評估綜整報告
           </h1>
           <p className="text-sm text-slate-600">
-            評估標的：{academicYear}學年度公共化幼兒園 {stats.total} 所（
+            評估標的：{academicYear}學年度幼兒園 {stats.total} 所（
             {stats.peerGroups.map((g) => `${g.peer_group} ${g.count} 所`).join("、")}）
           </p>
           <p className="text-xs text-slate-500">
@@ -596,7 +649,10 @@ export const CityRiskReportPage: React.FC = () => {
                   stats.peerGroups[0].average_score -
                   stats.peerGroups[stats.peerGroups.length - 1].average_score
                 ).toFixed(1)}
-                分，且全部高風險機構皆集中於前者，建議查核資源優先配置於該群組。
+                分
+                {stats.peerGroups[0].high_risk_count === stats.highRisk.length
+                  ? "，且全部高風險機構皆集中於前者，建議查核資源優先配置於該群組。"
+                  : `，高風險機構主要集中於${stats.peerGroups[0].peer_group}（${stats.peerGroups[0].high_risk_count} 所），建議查核資源優先配置。`}
               </p>
             )}
           </div>
@@ -676,9 +732,23 @@ export const CityRiskReportPage: React.FC = () => {
           </div>
           <p className="text-xs text-slate-600 leading-relaxed">
             {stats.penalizedCount} 所機構具歷史裁罰紀錄，合計 {stats.totalPenalties} 件；
-            裁罰件數達 2 件之機構其風險分數皆在 {Math.min(
-              ...stats.ranked.filter((s) => s.penalty_count >= 2).map((s) => s.latest_score)
-            )} 分以上，顯示裁罰歷史與模型評分方向一致。
+            {stats.penalizedCount > 0 ? (
+              <>
+                具裁罰紀錄機構之平均風險分數為{" "}
+                {(
+                  stats.ranked.filter((s) => s.penalty_count > 0).reduce((acc, s) => acc + s.latest_score, 0) /
+                  stats.penalizedCount
+                ).toFixed(1)}{" "}
+                分，顯著高於無裁罰紀錄機構（
+                {(
+                  stats.ranked.filter((s) => s.penalty_count === 0).reduce((acc, s) => acc + s.latest_score, 0) /
+                  Math.max(stats.total - stats.penalizedCount, 1)
+                ).toFixed(1)}{" "}
+                分），顯示裁罰歷史與模型評分方向高度一致。
+              </>
+            ) : (
+              <>受評機構目前查無歷史裁罰紀錄。</>
+            )}
           </p>
         </section>
 
@@ -695,12 +765,14 @@ export const CityRiskReportPage: React.FC = () => {
               <li className="leading-relaxed">
                 依附件三判斷基準，風險值達 6 以上屬不可容忍風險，本年度計{" "}
                 {stats.highRisk.length} 所應由管理階層督導研擬改善計畫並提供資源，查核順序建議依風險分數高低為：
-                {stats.highRisk.map((h) => `${h.school.name}（${h.school.latest_score}）`).join("、")}。
+                {stats.highRisk.slice(0, 10).map((h) => `${h.school.name}（${h.school.latest_score}）`).join("、")}
+                {stats.highRisk.length > 10 ? `...等共 ${stats.highRisk.length} 所` : ""}。
               </li>
             )}
             {districtClusters.length > 0 && (
               <li className="leading-relaxed">
-                {districtClusters.map((d) => `${d.district}（${d.count} 所）`).join("、")}
+                {districtClusters.slice(0, 8).map((d) => `${d.district}（${d.count} 所）`).join("、")}
+                {districtClusters.length > 8 ? `...等共 ${districtClusters.length} 個行政區` : ""}
                 同區內有多所受評機構且含高風險園，建議合併排程實地查核以節省往返人力。
               </li>
             )}
@@ -714,6 +786,19 @@ export const CityRiskReportPage: React.FC = () => {
             <p className="text-xs text-slate-600 mt-1">
               納入標準：綜合風險分數 ≥ 60 分，共 {stats.highRisk.length} 所。每節可獨立列印供承辦科室使用。
             </p>
+            {stats.highRisk.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-2 print:hidden">
+                {stats.highRisk.map((p) => (
+                  <a
+                    key={p.school.id}
+                    href={`#inst-${p.school.id}`}
+                    className="text-xs px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded border border-rose-200 transition"
+                  >
+                    {p.rank}. {p.school.name}（{p.school.latest_score}）
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           {stats.highRisk.map((profile) => (
@@ -777,7 +862,40 @@ export const CityRiskReportPage: React.FC = () => {
 
         {/* 附錄 */}
         <section className="space-y-2">
-          <h2 className="text-base font-bold text-slate-900">玖、附錄：全機構風險評分明細</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-bold text-slate-900">玖、附錄：全機構風險評分明細</h2>
+            <div className="print:hidden flex items-center gap-3">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="搜尋機構名稱、行政區、代碼..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8 pr-3 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 w-56"
+                />
+              </div>
+              <span className="text-xs text-slate-500">
+                共 {filteredRanked.length} 所
+                {!showAllRows && !searchTerm.trim() && filteredRanked.length > 100 && (
+                  <button
+                    onClick={() => setShowAllRows(true)}
+                    className="ml-2 text-blue-600 hover:underline font-medium cursor-pointer"
+                  >
+                    展開全部（目前前 100 筆）
+                  </button>
+                )}
+                {showAllRows && !searchTerm.trim() && (
+                  <button
+                    onClick={() => setShowAllRows(false)}
+                    className="ml-2 text-blue-600 hover:underline font-medium cursor-pointer"
+                  >
+                    收合為前 100 筆
+                  </button>
+                )}
+              </span>
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-[720px] w-full border-collapse text-xs">
               <thead className="bg-slate-100">
@@ -794,11 +912,12 @@ export const CityRiskReportPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {stats.ranked.map((s, i) => {
+                {displayedRanked.map((s) => {
+                  const originalRank = stats.ranked.findIndex((item) => item.id === s.id) + 1;
                   const level = getRiskLevel(s.latest_score);
                   return (
                     <tr key={s.id} className="hover:bg-slate-50">
-                      <td className="border border-slate-300 px-2 py-1.5 text-center tabular-nums">{i + 1}</td>
+                      <td className="border border-slate-300 px-2 py-1.5 text-center tabular-nums">{originalRank}</td>
                       <td className="border border-slate-300 px-2 py-1.5 text-center font-mono">{s.id}</td>
                       <td className="border border-slate-300 px-2 py-1.5">{s.name}</td>
                       <td className="border border-slate-300 px-2 py-1.5 text-center">{s.peer_group}</td>
@@ -851,7 +970,7 @@ const HighRiskSection: React.FC<{
   const level = getRiskLevel(school.latest_score);
 
   return (
-    <div className="border border-slate-300 rounded-lg p-4 space-y-3 break-inside-avoid">
+    <div id={`inst-${school.id}`} className="border border-slate-300 rounded-lg p-4 space-y-3 break-inside-avoid scroll-mt-6">
       <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-200 pb-2">
         <div>
           <h3 className="text-sm font-bold text-slate-900">
