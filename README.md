@@ -176,7 +176,7 @@ make build-frontend
 
 ---
 
-## 🔍 輿情爬蟲與 Bedrock 模型分析使用方式 (Opinion Crawler & Bedrock Inference)
+## 輿情爬蟲與 Bedrock 模型分析使用方式 (Opinion Crawler & Bedrock Inference)
 
 輿情分析模組整合多源網路爬蟲（**Google News RSS、PTT 媽寶板、Dcard 親子板、Threads 兩階段深度留言串爬蟲**）、實體消歧義對齊，並透過 **Amazon Bedrock (Claude 3.5 / 4.5 Haiku)** 進行 6 大法規風險議題分類與情緒極性計算，最終透過時間指數衰減算出機構輿情風險指數（`opinion_risk`，0–100 分）。
 
@@ -472,7 +472,3 @@ make deploy STAGE=prod          # 換 stage
 > Vite 只從 `.env` 檔載入 `VITE_*` 變數，單純 `export` 環境變數**不會**進入 `import.meta.env`
 > （Vite 5.4 實測）。因此部署腳本改用寫檔方式，並於建置後檢查產物確實含有該位址，
 > 避免靜默部署出一份打不到後端的前端。
-
----
-
-## ⚠️ 免責與使用限制聲明
